@@ -1,0 +1,2 @@
+127.0.0.1 - - [08/May/2010:11:42:10 +0200] "GET /userid HTTP/1.1" 200 32 "" "Mozilla/5.0 (X11; U; Linux x86_64; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.29 Safari/533.4"
+127.0.0.1 - - [08/May/2010:11:42:13 +0200] "GET /favicon.ico HTTP/1.1" 404 193 "" "Mozilla/5.0 (X11; U; Linux x86_64; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.29 Safari/533.4"
