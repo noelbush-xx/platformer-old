@@ -18,27 +18,29 @@ ensure_started(App) ->
 %% @spec start_link() -> {ok,Pid::pid()}
 %% @doc Starts the app for inclusion in a supervisor tree
 start_link() ->
-    platformer_deps:ensure(),
-    ensure_started(crypto),
-    application:set_env(webmachine, webmachine_logger_module, 
-                        webmachine_logger),
-    ensure_started(webmachine),
+    setup(),
     platformer_sup:start_link().
 
 %% @spec start() -> ok
 %% @doc Start the platformer server.
 start() ->
+    setup(),
+    application:start(platformer).
+
+setup() ->
+    random:seed(now()),
     platformer_deps:ensure(),
     ensure_started(crypto),
+    ensure_started(mnesia),
     application:set_env(webmachine, webmachine_logger_module, 
                         webmachine_logger),
-    ensure_started(webmachine),
-    application:start(platformer).
+    ensure_started(webmachine).
 
 %% @spec stop() -> ok
 %% @doc Stop the platformer server.
 stop() ->
     Res = application:stop(platformer),
+    application:stop(mnesia),
     application:stop(webmachine),
     application:stop(crypto),
     Res.

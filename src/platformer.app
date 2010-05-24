@@ -6,7 +6,8 @@
     platformer_app,
     platformer_sup,
     platformer_deps,
-    platformer_resource
+    platformer_resource,
+    wmtrace_resource
   ]},
   {registered, []},
   {mod, {platformer_app, []}},
