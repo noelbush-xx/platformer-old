@@ -1,0 +1,24 @@
+<!DOCTYPE HTML>
+<html>
+  <head>
+    <title>Platformer Javascript Web User Client</title>
+    <script type="text/javascript" src="script/jquery.js"><!-- --></script>
+    <script type="text/javascript" src="script/platformer.js"><!-- --></script>
+    <link rel="stylesheet" type="text/css" href="style/platformer.css" />
+  </head>
+  <body>
+    <h1>Platformer Javascript Web User Client</h1>
+    <output id="messages"></output>
+    <section id="userid">
+      <div id="choose-userid">
+        <label for="active-userid">Active userid:</label>
+        <select id="active-userid">
+        </select>
+      </div>
+      <div>
+        <button id="new-userid" type="button" onclick="Platformer.getUserid();">New Userid</button>
+        <button id="delete-userid" type="button" onclick="Platformer.deleteUserid();">Delete This Userid</button>
+      </div>
+    </section>
+  </body>
+</html>
