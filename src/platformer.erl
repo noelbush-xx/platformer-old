@@ -28,7 +28,6 @@ start() ->
     application:start(platformer).
 
 setup() ->
-    random:seed(now()),
     platformer_deps:ensure(),
     ensure_started(crypto),
     ensure_started(mnesia),

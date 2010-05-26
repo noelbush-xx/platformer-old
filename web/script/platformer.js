@@ -60,8 +60,8 @@
        var pf = this;
        $.ajax({
 		url: 'http://' + this.nextServer() + '/userid',
-		type: 'GET',
-		dataType: 'jsonp',
+		type: 'POST',
+		dataType: 'json',
 		success: function (data) {
 		  pf.updateUserids(data.userid);
 		}

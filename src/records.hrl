@@ -1,1 +1,1 @@
--record(userid, {userid, created}).
+-record(user, {id, created}).

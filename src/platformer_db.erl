@@ -1,5 +1,5 @@
 -module(platformer_db).
--export([delete/1, read_all/1, reset/0, write/1]).
+-export([delete/1, find/1, read_all/1, reset/0, write/1]).
 
 -include_lib("stdlib/include/qlc.hrl").
 
@@ -27,7 +27,7 @@ reset() ->
     mnesia:create_schema([node()]),
     mnesia:start(),
     
-    mnesia:create_table(userid, [{disc_copies, [node()]}, {attributes, record_info(fields, userid)}]).
+    mnesia:create_table(user, [{disc_copies, [node()]}, {attributes, record_info(fields, user)}]).
 
 transaction(F) ->
     case mnesia:transaction(F) of
