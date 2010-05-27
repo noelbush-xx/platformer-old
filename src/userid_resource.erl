@@ -5,42 +5,33 @@
 -module(userid_resource).
 -export([init/1, to_json/2]).
 -export([allow_missing_post/2, allowed_methods/2,
-         content_types_accepted/2, content_types_provided/2,
-         create_path/2, delete_resource/2, delete_completed/2,
-         malformed_request/2, options/2, post_is_create/2,
-         resource_exists/2]).
+         content_types_provided/2,
+         delete_resource/2, delete_completed/2,
+         malformed_request/2, options/2
+         %%resource_exists/2 <-- TODO: maybe implement this
+        ]).
 
 -include_lib("webmachine/include/webmachine.hrl").
 -include_lib("stdlib/include/qlc.hrl").
 
 -include("records.hrl").
 
--record(context, {userid=undefined}).
+-record(context, {config, callback, userid}).
 
 %% Webmachine functions
 
 init(Config) ->
-    {{trace, "/tmp"}, Config}.  %% debugging code
-    %%{ok, Config}.             %% regular code
+    {{trace, "/tmp"}, #context{config=Config}}.  %% debugging code
+    %%{ok, #context{config=Config}}.             %% regular code
 
 allow_missing_post(ReqData, Context) ->
     {true, ReqData, Context}.
 
 allowed_methods(ReqData, Context) ->
-    {['GET', 'DELETE', 'OPTIONS', 'POST'], ReqData, Context}.
-
-content_types_accepted(ReqData, Context) ->
-    {[{"text/javascript", to_json}], ReqData, Context}.
+    {['GET', 'DELETE', 'OPTIONS'], ReqData, Context}.
 
 content_types_provided(ReqData, Context) ->
-    {[{"text/javascript", to_json}], ReqData, Context}.
-
-create_path(ReqData, Context) ->
-    %% {jsonp:wrap(wrq:get_qs_value("callback", ReqData), [{"userid", list_to_binary(new_userid())}]), ReqData, State}.
-    Id = new_userid(),
-    %% wrq:set_resp_header("Location", string:concat("/userid/", Id), ReqData),
-    {string:concat("/userid/", Id), ReqData, Context}.
-
+    {[{"application/json", to_json}], ReqData, Context}.
 
 delete_resource(ReqData, Context) ->
     {delete_userid(wrq:path_info(id, ReqData)), ReqData, Context}.
@@ -49,42 +40,36 @@ delete_completed(ReqData, Context) ->
     {true, ReqData, Context}.
 
 malformed_request(ReqData, Context) ->
-    MF = case wrq:method(ReqData) of
-             'GET' ->
-                 %% case wrq:get_qs_value("callback", ReqData) of
-                 %%     'undefined' -> true;
-                 %%     _ -> false
-                 %% end;
-                 false;
-             'POST' ->
-                 false;
-             'DELETE' ->
-                 case wrq:path_info(id, ReqData) of
-                     'undefined' -> true;
-                     _ -> false
-                 end;
-             'OPTIONS' ->
-                 false;
-             _ ->
-                 true
-         end,
-    {MF, ReqData, Context}.
+    {Malformed, Message, NewContext} =
+        case wrq:method(ReqData) of
+            'GET' ->
+                case wrq:get_qs_value("callback", ReqData) of
+                    undefined ->
+                        {true, "No callback specified.", Context};
+                    Callback ->
+                        {false, undefined, Context#context{callback=Callback}}
+                end;
+            'DELETE' ->
+                case wrq:path_info(id, ReqData) of
+                    undefined -> 
+                        {true, "No userid specified.", Context};
+                    _ ->
+                        {false, undefined, Context}
+                end;
+            'OPTIONS' ->
+                {false, undefined, Context}
+        end,
+    NewReqData = 
+        if
+            Message =/= undefined -> wrq:append_to_response_body(Message, ReqData);
+            true -> ReqData
+        end,
+    {Malformed, NewReqData, NewContext}.
 
 options(ReqData, Context) ->
     {[{"Access-Control-Allow-Origin", "*"},
       {"Access-Control-Allow-Methods", "GET, DELETE, OPTIONS"}
      ], ReqData, Context}.
-
-post_is_create(ReqData, Context) ->
-    {true, ReqData, Context}.
-
-resource_exists(ReqData, Context) ->
-    {case wrq:method(ReqData) of
-        'POST' ->
-            false;
-        _ ->
-            false
-     end, ReqData, Context}.
 
 %% Resource-specific functions
 
@@ -105,13 +90,21 @@ userid_exists(Id) ->
     length(platformer_db:find(qlc:q([X || X <- mnesia:table(user),
                                            X#user.id == Id]))) > 0.
 
-to_json(ReqData, State) ->
+to_json(ReqData, Context) ->
     case wrq:method(ReqData) of
         'GET' ->
-            {userid_exists(wrq:path_info(id, ReqData)), ReqData, State};
-        'POST' ->
-            %% {true, ReqData, State};
-            {true, wrq:set_resp_header("Location", wrq:disp_path(ReqData), ReqData), State};
+            case wrq:path_info('id', ReqData) of
+                undefined ->
+                    Id = new_userid(),
+                    {true,
+                     wrq:set_resp_header("Location", string:concat("/userid/", Id),
+                                         wrq:set_resp_body(
+                                           json:wrap(Context#context.callback, [{userid, Id}]),
+                                           ReqData)),
+                     Context};
+                RequestedId ->
+                    {userid_exists(RequestedId), ReqData, Context}
+            end;
         _ ->
-            {true, ReqData, State}
+            {"", ReqData, Context}
     end.

@@ -34,12 +34,12 @@
 
        var server = this.nextServer();
        $.ajax({
-		url: 'http://' + server + '/userid/' + pf.userid,
-		type: 'DELETE',
+                url: 'http://' + server + '/userid/' + pf.userid,
+                type: 'DELETE',
                 beforeSend: function (xhr) {
                   xhr.setRequestHeader("Access-Control-Request-Method", "DELETE");
                 }
-	      });
+              });
 
        var ids = this._loadUserids();
        var index = $.inArray(this.userid, ids);
@@ -59,13 +59,16 @@
      getUserid: function () {
        var pf = this;
        $.ajax({
-		url: 'http://' + this.nextServer() + '/userid',
-		type: 'POST',
-		dataType: 'json',
-		success: function (data) {
-		  pf.updateUserids(data.userid);
-		}
-	      });
+                url: 'http://' + this.nextServer() + '/userid',
+                type: 'GET',
+                dataType: 'jsonp',
+                success: function (data, status, xhr) {
+                  pf.updateUserids(data.userid);
+                },
+                error: function (xhr, status, error) {
+                  $('#messages').text("Error getting userid: " + status);
+                }
+              });
      },
 
      /* Return the next server to be used. */
@@ -108,10 +111,10 @@
        // Build the options, selecting the current id.
        var pf = this;
        $.each(ids, function (index, value) {
-		$('#active-userid').append('<option value="' + value + '"' +
-					   (value == pf.userid ? ' selected="selected"' : '') +
-					   '>' + value + '</option>');
-	      });
+                $('#active-userid').append('<option value="' + value + '"' +
+                                           (value == pf.userid ? ' selected="selected"' : '') +
+                                           '>' + value + '</option>');
+              });
 
        // Hide the select and the delete button if there are no userids.
        if (this.userid == null) {
@@ -165,10 +168,10 @@
  })();
 
 $(document).ready(function () {
-		    // Load json2.js if browser doesn't include ECMAScript 5.
-		    if (!(typeof JSON === 'object' && JSON.parse)) {
-		      $.getScript('script/json2.js');
-		    }
-		    Platformer = new Platformer();
-		  });
+                    // Load json2.js if browser doesn't include ECMAScript 5.
+                    if (!(typeof JSON === 'object' && JSON.parse)) {
+                      $.getScript('script/json2.js');
+                    }
+                    Platformer = new Platformer();
+                  });
 
