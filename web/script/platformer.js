@@ -18,7 +18,7 @@
      userid: undefined,
 
      /* A list of known servers. */
-     servers: [ {host: 'platformer', port: 8000} ],
+     servers: [ 'http://platformer:8000' ],
 
      /* An array used in picking the next server (see nextServer()). */
      unused_servers: [],
@@ -32,13 +32,10 @@
      deleteUserid: function () {
        var pf = this;
 
-       var server = this.nextServer();
+       // Note that the browser must implement preflighting as per https://developer.mozilla.org/En/HTTP_Access_Control
        $.ajax({
-                url: 'http://' + server + '/userid/' + pf.userid,
+                url: this.nextServer() + '/userid/' + pf.userid,
                 type: 'DELETE',
-                beforeSend: function (xhr) {
-                  xhr.setRequestHeader("Access-Control-Request-Method", "DELETE");
-                }
               });
 
        var ids = this._loadUserids();
@@ -59,7 +56,7 @@
      getUserid: function () {
        var pf = this;
        $.ajax({
-                url: 'http://' + this.nextServer() + '/userid',
+                url: this.nextServer() + '/userid',
                 type: 'GET',
                 dataType: 'jsonp',
                 success: function (data, status, xhr) {
@@ -87,7 +84,7 @@
        this.unused_servers.splice(choice, 1);
 
        // Form the url for the chosen server.
-       return server.host + ':' + server.port;
+       return server;
      },
 
      /*

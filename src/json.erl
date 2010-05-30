@@ -7,7 +7,7 @@
 
 %% Encode the given data as json and wrap it with the given prefix.
 wrap(Prefix, Data) ->
-  io_lib:format("~s(~s)", [Prefix, json:ify(Data)]).
+  io_lib:format("~s(~s);", [Prefix, json:ify(Data)]).
 
 %% json-ify the given data.
 ify(Data) ->

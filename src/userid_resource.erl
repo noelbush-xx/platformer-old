@@ -64,32 +64,36 @@ delete_resource(ReqData, Context) ->
 delete_completed(ReqData, Context) ->
     {true, ReqData, Context}.
 
+%% This does something a little unusual -- it checks if we're getting
+%% a GET + jsonp callback request, and if so changes it to a POST
+%% (preserving the callback).  This allows us to use the same processing
+%% path for what is really the same request (GET+jsonp is just a browser
+%% security option that doesn't really help us here).
 malformed_request(ReqData, Context) ->
-    {Malformed, Message, NewContext} =
-        case wrq:method(ReqData) of
-            'GET' ->
-                case wrq:get_qs_value("callback", ReqData) of
-                    undefined ->
-                        {true, "No callback specified.", Context};
-                    Callback ->
-                        {false, undefined, Context#context{callback=Callback}}
-                end;
-            'DELETE' ->
-                case wrq:path_info(id, ReqData) of
-                    undefined -> 
-                        {true, "No userid specified.", Context};
-                    _ ->
-                        {false, undefined, Context}
-                end;
-            _ ->
-                {false, undefined, Context}
-        end,
-    NewReqData = 
-        if
-            Message =/= undefined -> wrq:append_to_response_body(Message, ReqData);
-            true -> ReqData
-        end,
-    {Malformed, NewReqData, NewContext}.
+    case wrq:method(ReqData) of
+        'GET' ->
+            case wrq:get_qs_value("callback", ReqData) of
+                undefined ->
+                    {true,
+                     wrq:append_to_response_body("No callback specified.", ReqData),
+                     Context};
+                Callback ->
+                    {false,
+                     ReqData#wm_reqdata{method='POST'},
+                     Context#context{callback=Callback}}
+            end;
+        'DELETE' ->
+            case wrq:path_info(id, ReqData) of
+                undefined -> 
+                    {true,
+                     wrq:append_to_response_body("No userid specified."),
+                     Context};
+                _ ->
+                    {false, ReqData, Context}
+            end;
+        _ ->
+            {false, ReqData, Context}
+    end.
 
 options(ReqData, Context) ->
     {[{"Access-Control-Allow-Origin", "*"},
@@ -133,25 +137,23 @@ new_userid() ->
     {Id, string:concat("/userid/", Id)}.
 
 %% @spec to_json(rd(), term()) -> {string(), rd(), term()}
+%%
+%% Here we make sure to wrap the result in a callback (meaning that
+%% we originally got this from a browser as a GET+jsonp request).
 to_json(ReqData, Context) ->
     case wrq:method(ReqData) of
-        Method when Method =:= 'GET' orelse Method =:= 'POST' ->
-            {Id, Path} =
-                case Method of
-                    'GET' ->
-                        new_userid();
-                    'POST' ->
-                        {Context#context.userid, Context#context.path}
-                end,
+        'POST' ->
+            {Id, Path} = {Context#context.userid, Context#context.path},
             Body =
-                case Method of
-                    'GET' ->
-                        json:wrap(Context#context.callback, [{userid, Id}]);
-                    'POST' ->
-                        json:ify([{userid, Id}])
+                case Context#context.callback of
+                    undefined ->
+                        json:ify([{userid, Id}]);
+                    Callback ->
+                        json:wrap(Callback, [{userid, Id}])
                 end,
-            {Body,
-             wrq:set_resp_header("Location", Path, ReqData),
+            {true,
+             wrq:set_resp_header("Location", Path,
+                                 wrq:set_resp_body(Body, ReqData)),
              Context};
         _ ->
             {"", ReqData, Context}
