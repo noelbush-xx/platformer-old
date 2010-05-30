@@ -1,5 +1,5 @@
 {application, platformer,
- [{description, "platformer"},
+ [{description, "Platformer node"},
   {vsn, "0.1"},
   {modules, [
     platformer,

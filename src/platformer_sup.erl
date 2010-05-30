@@ -41,17 +41,24 @@ upgrade() ->
 %% @spec init([]) -> SupervisorTree
 %% @doc supervisor callback.
 init([]) ->
-    Ip = case os:getenv("WEBMACHINE_IP") of false -> "0.0.0.0"; Any -> Any end,
-    {ok, Dispatch} = file:consult(filename:join(
-                         [filename:dirname(code:which(?MODULE)),
-                          "..", "priv", "dispatch.conf"])),
-    WebConfig = [
-		 {ip, Ip},
-		 {port, 8000},
-                 {log_dir, "priv/log"},
-		 {dispatch, Dispatch}],
+    Ip = get_param(ip, "0.0.0.0"),
+    Port = get_param(port, 8000),
+    DispatchPath = get_param(dispatch, "priv/dispatch.conf"),
+    LogDir = get_param(log_dir, "priv/log"),
+    
+    {ok, Dispatch} = file:consult(DispatchPath),
+
+    Config = [{ip, Ip},
+              {port, Port},
+              {log_dir, LogDir},
+              {dispatch, Dispatch}],
+
     Web = {webmachine_mochiweb,
-	   {webmachine_mochiweb, start, [WebConfig]},
+	   {webmachine_mochiweb, start, [Config]},
 	   permanent, 5000, worker, dynamic},
     Processes = [Web],
     {ok, {{one_for_one, 10, 10}, Processes}}.
+
+get_param(Par, Default) ->
+    case application:get_env(Par) of undefined -> Default; {ok, Val} -> Val end.
+            
