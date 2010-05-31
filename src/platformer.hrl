@@ -1,1 +1,2 @@
-
+-record(user, {id, status, last_modified}).
+-record(server, {address, created}).

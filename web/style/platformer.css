@@ -1,6 +1,12 @@
 #userid * label {
   font-weight: bold;
 }
-#userid div {
-  margin-bottom: 1em;
+#userid {
+  margin: 1em 0;
+}
+.error {
+  color: red;
+}
+.info {
+  color: green;
 }

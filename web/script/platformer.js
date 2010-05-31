@@ -18,7 +18,8 @@
      userid: undefined,
 
      /* A list of known servers. */
-     servers: [ 'http://platformer:8000' ],
+     servers: [ 'http://platformer:8000'/*,
+                'http://platformer:8001'*/ ],
 
      /* An array used in picking the next server (see nextServer()). */
      unused_servers: [],
@@ -26,6 +27,15 @@
      init: function () {
        this.userid = localStorage.getItem('active_userid');
        this.updateUserids();
+     },
+
+     /* Clear all stored userids. */
+     clearStoredUserids: function () {
+       localStorage.removeItem('userids');
+       localStorage.removeItem('active_userid');
+       this.userid = undefined;
+       this.updateUserids();
+       this._showMessage('Cleared.');
      },
 
      /* Delete the current userid. */
@@ -36,6 +46,7 @@
        $.ajax({
                 url: this.nextServer() + '/userid/' + pf.userid,
                 type: 'DELETE',
+                complete: Platformer._showStatus
               });
 
        var ids = this._loadUserids();
@@ -57,13 +68,14 @@
        var pf = this;
        $.ajax({
                 url: this.nextServer() + '/userid',
-                type: 'GET',
-                dataType: 'jsonp',
+                type: 'POST',
+                dataType: 'json',
+                complete: Platformer._showStatus,
                 success: function (data, status, xhr) {
                   pf.updateUserids(data.userid);
                 },
                 error: function (xhr, status, error) {
-                  $('#messages').text("Error getting userid: " + status);
+                  $('#messages').text('Error getting a userid: ' + status);
                 }
               });
      },
@@ -85,6 +97,26 @@
 
        // Form the url for the chosen server.
        return server;
+     },
+
+     /*
+      * Test whether the currently selected userid is known to exist.
+      * Obviously, this should always find that it does!
+      */
+     testUseridExists: function () {
+       // $('#messages').html('Existence not verified.');
+       // var xhr = new XMLHttpRequest();
+       // xhr.open('HEAD', this.nextServer() + '/userid/' + this.userid, true);
+       // xhr.onreadystatechange = function () {
+       //   $('#messages').html('Status: ' + xhr.status);
+       // };
+       // xhr.send(null);
+       var pf = this;
+       result = $.ajax({
+                url: this.nextServer() + '/userid/' + this.userid,
+                type: 'HEAD',
+                complete: Platformer._showStatus
+              });
      },
 
      /*
@@ -117,11 +149,24 @@
        if (this.userid == null) {
          $('#choose-userid').hide();
          $('#delete-userid').hide();
+         $('#clear-userids').hide();
+         $('#test-exists').hide();
        }
        else {
          $('#choose-userid').show();
          $('#delete-userid').show();
+         $('#clear-userids').show();
+         $('#text-exists').show();
        }
+     },
+
+     _showMessage: function (message, type) {
+       type = type == undefined ? 'info' : type;
+       $('#messages').html('<span class="' + type + '">' + message + '</span>');
+     },
+
+     _showStatus: function (xhr, textStatus) {
+       Platformer._showMessage('Status: ' + xhr.status, xhr.status == 404 ? 'error' : 'info');
      },
 
      // HELPER FUNCTIONS

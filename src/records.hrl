@@ -1,1 +1,0 @@
--record(user, {id, created}).

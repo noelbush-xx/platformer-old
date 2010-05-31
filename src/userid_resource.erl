@@ -3,20 +3,15 @@
 %% @doc Userid resource.
 %%
 %% This module handles creating and deleting users in Platformer.
-%% A standard REST interface is augmented with a GET+jsonp method
-%% to accomodate web browsers with stringent cross-domain security models.
 %%
 %% Method      URI                      -->  Successful Response
-%% POST        /userid                       201 Content-Type: application/json
+%% POST        /userid                       201 Content-Type: text/javascript
 %%                                               Location: URI of new userid
-%%                                               {"userid":new_userid}
-%% GET         /userid?callback=abcxyz       201 Content-Type: application/json
-%%                                               Location: URI of new userid
-%%                                               abcxyz({"userid":new_userid})
-%% GET         /userid/some_userid           200 (if id exists)
+%%                                               {"userid":new_userid};
+%% HEAD        /userid/some_userid           200 (if id exists)
 %% DELETE      /userid/some_userid           204
-%% OPTIONS     /userid                       200 Access-Control-Allow-Methods: GET, POST, OPTIONS
-%% OPTIONS     /userid/some_userid           200 Access-Control-Allow-Methods: GET, DELETE, OPTIONS
+%% OPTIONS     /userid                       200 Access-Control-Allow-Methods: POST, OPTIONS
+%% OPTIONS     /userid/some_userid           200 Access-Control-Allow-Methods: HEAD, DELETE, OPTIONS
 
 -module(userid_resource).
 -export([init/1, to_json/2]).
@@ -30,9 +25,9 @@
 -include_lib("webmachine/include/webmachine.hrl").
 -include_lib("stdlib/include/qlc.hrl").
 
--include("records.hrl").
+-include("platformer.hrl").
 
--record(context, {config, callback, userid, path}).
+-record(context, {config, userid, path}).
 
 %% Webmachine functions
 
@@ -44,11 +39,7 @@ allow_missing_post(ReqData, Context) ->
     {true, ReqData, Context}.
 
 allowed_methods(ReqData, Context) ->
-    {['GET', 'DELETE', 'OPTIONS', 'POST'], ReqData, Context}.
-
-create_path(ReqData, Context) ->
-    {Id, Path} = new_userid(),
-    {Path, ReqData, Context#context{userid=Id, path=Path}}.
+    {['DELETE', 'HEAD', 'OPTIONS', 'POST'], ReqData, Context}.
 
 content_types_accepted(ReqData, Context) ->
     {[{"application/x-www-form-urlencoded", to_json},  %% default as sent by jquery & forms in general
@@ -56,49 +47,52 @@ content_types_accepted(ReqData, Context) ->
      ], ReqData, Context}.
 
 content_types_provided(ReqData, Context) ->
-    {[{"application/json", to_json}], ReqData, Context}.
+    {[{"text/javascript", to_json}], ReqData, Context}.
 
-delete_resource(ReqData, Context) ->
-    {delete_userid(wrq:path_info(id, ReqData)), ReqData, Context}.
+create_path(ReqData, Context) ->
+    {Id, Path} = new_userid(),
+    {Path, wrq:set_resp_header("Location", Path, ReqData), Context#context{userid=Id, path=Path}}.
 
 delete_completed(ReqData, Context) ->
     {true, ReqData, Context}.
 
-%% This does something a little unusual -- it checks if we're getting
-%% a GET + jsonp callback request, and if so changes it to a POST
-%% (preserving the callback).  This allows us to use the same processing
-%% path for what is really the same request (GET+jsonp is just a browser
-%% security option that doesn't really help us here).
+delete_resource(ReqData, Context) ->
+    {delete_userid(wrq:path_info(id, ReqData)), ReqData, Context}.
+
 malformed_request(ReqData, Context) ->
-    case wrq:method(ReqData) of
-        'GET' ->
-            case wrq:get_qs_value("callback", ReqData) of
-                undefined ->
-                    {true,
-                     wrq:append_to_response_body("No callback specified.", ReqData),
-                     Context};
-                Callback ->
-                    {false,
-                     ReqData#wm_reqdata{method='POST'},
-                     Context#context{callback=Callback}}
-            end;
-        'DELETE' ->
-            case wrq:path_info(id, ReqData) of
-                undefined -> 
-                    {true,
-                     wrq:append_to_response_body("No userid specified."),
-                     Context};
-                _ ->
-                    {false, ReqData, Context}
-            end;
-        _ ->
-            {false, ReqData, Context}
-    end.
+    {MF, NewReqData, NewContext} =
+        case wrq:method(ReqData) of
+            'DELETE' ->
+                case wrq:path_info(id, ReqData) of
+                    undefined -> 
+                        {true,
+                         wrq:append_to_response_body("No userid specified.", ReqData),
+                         Context};
+                    _ ->
+                        {false, ReqData, Context}
+                end;
+            'HEAD' ->
+                {case wrq:path_info(id, ReqData) of undefined -> true; _ -> false end,
+                 ReqData,
+                 Context};
+            'OPTIONS' ->
+                {false, ReqData, Context};
+            'POST' ->
+                {case wrq:path_info(id, ReqData) of undefined -> false; _ -> true end,
+                 ReqData,
+                 Context}
+        end,
+    {MF, wrq:set_resp_header("Access-Control-Allow-Origin", "*", NewReqData), NewContext}.
 
 options(ReqData, Context) ->
     {[{"Access-Control-Allow-Origin", "*"},
-      {"Access-Control-Allow-Methods", "GET, DELETE, OPTIONS"}
-     ], ReqData, Context}.
+      case wrq:path_info(id, ReqData) of
+          undefined ->
+              {"Access-Control-Allow-Methods", "OPTIONS, POST"};
+          _ ->
+              {"Access-Control-Allow-Methods", "HEAD, DELETE, OPTIONS"}
+      end],
+     ReqData, Context}.
 
 post_is_create(ReqData, Context) ->
     {true, ReqData, Context}.
@@ -106,12 +100,10 @@ post_is_create(ReqData, Context) ->
 resource_exists(ReqData, Context) ->
     Exists =
         case wrq:method(ReqData) of
-            'GET' ->
-                case wrq:path_info('id', ReqData) of
-                    undefined -> true;
-                    RequestedId ->
-                        userid_exists(RequestedId)
-                end;
+            'DELETE' ->
+                user_exists(wrq:path_info('id', ReqData));
+            'HEAD' ->
+                user_exists(wrq:path_info('id', ReqData));
             'POST' ->
                 false;
             _ ->
@@ -123,43 +115,38 @@ resource_exists(ReqData, Context) ->
 
 %% @spec delete_userid(int()) -> bool()
 delete_userid(Id) ->
-    case platformer_db:delete({user, Id}) of
-        {atomic, _Result} ->
+    F = fun() ->
+                [User] = mnesia:read(user, Id, write),
+                mnesia:write(User#user{status = deleted, last_modified = now()})
+        end,
+    case mnesia:transaction(F) of
+        {atomic, _} ->
             true;
-        _ ->
+        {aborted, _} ->
             false
     end.
 
 %% @spec new_userid() -> {Id, Path}
 new_userid() ->
     Id = string:concat("platformer_user_", uuid:to_string(uuid:v4())),
-    platformer_db:write(#user{id=Id, created=now()}),
+    platformer_db:write(#user{id=Id, status=active, last_modified=now()}),
     {Id, string:concat("/userid/", Id)}.
 
 %% @spec to_json(rd(), term()) -> {string(), rd(), term()}
-%%
-%% Here we make sure to wrap the result in a callback (meaning that
-%% we originally got this from a browser as a GET+jsonp request).
 to_json(ReqData, Context) ->
     case wrq:method(ReqData) of
         'POST' ->
-            {Id, Path} = {Context#context.userid, Context#context.path},
-            Body =
-                case Context#context.callback of
-                    undefined ->
-                        json:ify([{userid, Id}]);
-                    Callback ->
-                        json:wrap(Callback, [{userid, Id}])
-                end,
+            {Id, _Path} = {Context#context.userid, Context#context.path},
             {true,
-             wrq:set_resp_header("Location", Path,
-                                 wrq:set_resp_body(Body, ReqData)),
+             wrq:set_resp_body(json:ify([{userid, Id}]), ReqData),
              Context};
+        'HEAD' ->
+            {json:ify([{userid, Context#context.userid}]), ReqData, Context};
         _ ->
-            {"", ReqData, Context}
+            {<<>>, ReqData, Context}
     end.
 
-%% @spec userid_exists(int()) -> bool()
-userid_exists(Id) ->
+%% @spec user_exists(int()) -> bool()
+user_exists(Id) ->
     length(platformer_db:find(qlc:q([X || X <- mnesia:table(user),
                                            X#user.id == Id]))) > 0.

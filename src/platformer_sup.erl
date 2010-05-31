@@ -51,7 +51,8 @@ init([]) ->
     Config = [{ip, Ip},
               {port, Port},
               {log_dir, LogDir},
-              {dispatch, Dispatch}],
+              {dispatch, Dispatch},
+              {error_handler, platformer_error_handler}],
 
     Web = {webmachine_mochiweb,
 	   {webmachine_mochiweb, start, [Config]},

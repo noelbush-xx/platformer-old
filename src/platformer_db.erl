@@ -3,7 +3,7 @@
 
 -include_lib("stdlib/include/qlc.hrl").
 
--include("records.hrl").
+-include("platformer.hrl").
 
 delete(Oid) ->
     F = fun() ->
@@ -27,7 +27,8 @@ reset() ->
     mnesia:create_schema([node()]),
     mnesia:start(),
     
-    mnesia:create_table(user, [{disc_copies, [node()]}, {attributes, record_info(fields, user)}]).
+    mnesia:create_table(user, [{disc_copies, [node()]}, {attributes, record_info(fields, user)}]),
+    mnesia:create_table(server, [{disc_copies, [node()]}, {attributes, record_info(fields, server)}]).
 
 transaction(F) ->
     case mnesia:transaction(F) of
@@ -36,7 +37,6 @@ transaction(F) ->
 	{aborted, _Reason} ->
 	    []
     end.
-
 
 write(Rec) ->
     F = fun() ->

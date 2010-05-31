@@ -6,6 +6,7 @@
     platformer_app,
     platformer_sup,
     platformer_deps,
+    platformer_error_handler,
     platformer_resource,
     wmtrace_resource
   ]},
