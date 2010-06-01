@@ -29,6 +29,7 @@ start() ->
 
 setup() ->
     platformer_deps:ensure(),
+    ensure_started(inets),
     ensure_started(crypto),
     ensure_started(mnesia),
     application:set_env(webmachine, webmachine_logger_module, 
@@ -39,6 +40,7 @@ setup() ->
 %% @doc Stop the platformer server.
 stop() ->
     Res = application:stop(platformer),
+    application:stop(inets),
     application:stop(mnesia),
     application:stop(webmachine),
     application:stop(crypto),

@@ -18,8 +18,8 @@
      userid: undefined,
 
      /* A list of known servers. */
-     servers: [ 'http://platformer:8000'/*,
-                'http://platformer:8001'*/ ],
+     servers: [ 'http://platformer:8000',
+                'http://platformer:8001' ],
 
      /* An array used in picking the next server (see nextServer()). */
      unused_servers: [],
@@ -44,7 +44,7 @@
 
        // Note that the browser must implement preflighting as per https://developer.mozilla.org/En/HTTP_Access_Control
        $.ajax({
-                url: this.nextServer() + '/userid/' + pf.userid,
+                url: this.nextServer() + '/user/' + pf.userid,
                 type: 'DELETE',
                 complete: Platformer._showStatus
               });
@@ -67,7 +67,7 @@
      getUserid: function () {
        var pf = this;
        $.ajax({
-                url: this.nextServer() + '/userid',
+                url: this.nextServer() + '/user',
                 type: 'POST',
                 dataType: 'json',
                 complete: Platformer._showStatus,
@@ -101,19 +101,12 @@
 
      /*
       * Test whether the currently selected userid is known to exist.
-      * Obviously, this should always find that it does!
+      * It might not if it has been deleted elsewhere.
       */
      testUseridExists: function () {
-       // $('#messages').html('Existence not verified.');
-       // var xhr = new XMLHttpRequest();
-       // xhr.open('HEAD', this.nextServer() + '/userid/' + this.userid, true);
-       // xhr.onreadystatechange = function () {
-       //   $('#messages').html('Status: ' + xhr.status);
-       // };
-       // xhr.send(null);
        var pf = this;
        result = $.ajax({
-                url: this.nextServer() + '/userid/' + this.userid,
+                url: this.nextServer() + '/user/' + this.userid,
                 type: 'HEAD',
                 complete: Platformer._showStatus
               });

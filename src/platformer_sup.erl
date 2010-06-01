@@ -57,6 +57,11 @@ init([]) ->
     Web = {webmachine_mochiweb,
 	   {webmachine_mochiweb, start, [Config]},
 	   permanent, 5000, worker, dynamic},
+
+    %% Ensure any preconfigured servers are in the database.
+    {ok, Servers} = application:get_env(servers),
+    [server_resource:new_server(Address) || Address <- Servers],
+
     Processes = [Web],
     {ok, {{one_for_one, 10, 10}, Processes}}.
 
