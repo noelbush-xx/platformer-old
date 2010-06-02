@@ -74,17 +74,13 @@ malformed_request(ReqData, Context) ->
                         {false, ReqData, Context}
                 end;
             'HEAD' ->
-                {case wrq:path_info(id, ReqData) of undefined -> true; _ -> false end,
-                 ReqData,
-                 Context};
+                {wrq:path_info(id, ReqData) == undefined, ReqData, Context};
             'OPTIONS' ->
                 {false, ReqData, Context};
             'POST' ->
-                {case wrq:path_info(id, ReqData) of undefined -> false; _ -> true end,
-                 ReqData,
-                 Context}
+                {wrq:path_info(id, ReqData) =/= undefined, ReqData, Context}
         end,
-    {MF, wrq:set_resp_header("Access-Control-Allow-Origin", "*", NewReqData), NewContext}.
+    {MF, pfr:postprocess_rd(NewReqData), NewContext}.
 
 moved_permanently(ReqData, Context) ->
     {false, ReqData, Context}.
@@ -93,13 +89,15 @@ moved_temporarily(ReqData, Context) ->
     {false, ReqData, Context}.
 
 options(ReqData, Context) ->
-    {[{"Access-Control-Allow-Origin", "*"},
-      case wrq:path_info(id, ReqData) of
-          undefined ->
-              {"Access-Control-Allow-Methods", "OPTIONS, POST"};
-          _ ->
-              {"Access-Control-Allow-Methods", "HEAD, DELETE, OPTIONS"}
-      end],
+    {lists:flatten(
+       [{"Access-Control-Allow-Origin", "*"},
+        case wrq:path_info(id, ReqData) of
+            undefined ->
+                {"Access-Control-Allow-Methods", "OPTIONS, POST"};
+            _ ->
+                [{"Access-Control-Allow-Methods", "HEAD, DELETE, OPTIONS"},
+                 {"Access-Control-Allow-Headers", "X-Platformer-Query-Token, X-Platformer-Query-Age"}]
+        end]),
      ReqData, Context}.
 
 post_is_create(ReqData, Context) ->
@@ -114,7 +112,10 @@ resource_exists(ReqData, Context) ->
     {Exists, NewContext} =
         case wrq:method(ReqData) of
             Method when Method =:= 'DELETE' orelse Method =:= 'HEAD' ->
-                {Found, Status} = user_exists(wrq:path_info('id', ReqData)),
+                {Found, Status} = 
+                    %% Only check other servers if the X-Platformer-Query-Token and
+                    %% X-Platformer-Query-Age headers are present.
+                    user_exists({wrq:path_info('id', ReqData), pfr:valid_extended_query_request(ReqData)}),
                 {Found, Context#context{status=Status}};
             'POST' ->
                 {false, Context};
@@ -159,27 +160,32 @@ to_json(ReqData, Context) ->
             {<<>>, ReqData, Context}
     end.
 
-%% @spec user_exists(int()) -> {bool(), atom()}
-user_exists(Id) ->
+%% @spec user_exists(int(), bool()) -> {bool(), atom()}
+user_exists({Id, CheckOtherServers}) ->
     %% First check the local database.
     Result = platformer_db:find(qlc:q([X || X <- mnesia:table(user),
                                             X#user.id == Id])),
     case length(Result) of
         1 ->
+            io:format("Found locally.~n"),
             User = hd(Result),
             case User#user.status of
                 active -> {true, active};
                 deleted -> {false, deleted}
             end;
         0 ->
-            %% TODO: Go check with other servers
-            user_exists(Id, server_resource:get_servers());
+            %% Not found locally -- only check other servers if instructed to do so.
+            case CheckOtherServers of
+                true -> user_exists(Id, server_resource:get_servers());
+                false -> {false, unknown}
+            end;
         _ ->
             throw({codingError, "Multiple results found for id!"})
     end.
     
 user_exists(Id, [Server|Servers]) ->
-    case httpc:request(head, {Server#server.address ++ "/user/" ++ Id, []}, [], []) of
+    case httpc:request(head, {lists:concat([Server#server.address, "/user/", Id]),
+                              [{"X-Platformer-Node", get_node_address()}]}, [], []) of
         {ok, {{_, Status, _}, _, _}} ->
             case Status of
                 200 -> {true, active};
@@ -189,3 +195,6 @@ user_exists(Id, [Server|Servers]) ->
         {error, _Reason} -> user_exists(Id, Servers)
 end;
 user_exists(_Id, []) -> {false, unknown}.
+
+get_node_address() ->
+    lists:concat(["http://", util:get_param(ip, httpd_socket:resolve()), ":", util:get_param(port, 2010)]).

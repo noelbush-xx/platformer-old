@@ -18,10 +18,10 @@
      userid: undefined,
 
      /* A list of known servers. */
-     servers: [ 'http://platformer:8000',
-                'http://platformer:8001' ],
+     servers: [ 'http://0.0.0.0:8000',
+                'http://0.0.0.0:8001' ],
 
-     /* An array used in picking the next server (see nextServer()). */
+     /* An array used in picking the next server (see _nextServer()). */
      unused_servers: [],
 
      init: function () {
@@ -43,45 +43,49 @@
        var pf = this;
 
        // Note that the browser must implement preflighting as per https://developer.mozilla.org/En/HTTP_Access_Control
-       $.ajax({
-                url: this.nextServer() + '/user/' + pf.userid,
-                type: 'DELETE',
-                complete: Platformer._showStatus
-              });
+       this._request('/user/' + pf.userid,
+                     [204],
+                     {type: 'DELETE',
+                      complete: function (xhr, textStatus) {
+                        status = Platformer._showStatus(xhr, textStatus);
+                        switch (status) {
+                        case 204:
+                          var ids = this._loadUserids();
+                          var index = $.inArray(this.userid, ids);
+                          if (index != -1) {
+                            ids.splice(index, 1);
+                          }
 
-       var ids = this._loadUserids();
-       var index = $.inArray(this.userid, ids);
-       if (index != -1) {
-         ids.splice(index, 1);
-       }
+                          // Select the first userid in the remaining list.
+                          this._setUserid(ids[0]);
 
-       // Select the first userid in the remaining list.
-       this._setUserid(ids[0]);
-
-       // Save and update.
-       this._saveUserids(ids);
-       this.updateUserids();
+                          // Save and update.
+                          this._saveUserids(ids);
+                          this.updateUserids();
+                          break;
+                        }
+                      }
+                     });
      },
 
      /* Get a new userid from a platformer server. */
      getUserid: function () {
        var pf = this;
-       $.ajax({
-                url: this.nextServer() + '/user',
-                type: 'POST',
-                dataType: 'json',
-                complete: Platformer._showStatus,
-                success: function (data, status, xhr) {
-                  pf.updateUserids(data.userid);
-                },
-                error: function (xhr, status, error) {
-                  $('#messages').text('Error getting a userid: ' + status);
-                }
-              });
+       this._request('/user',
+                     [201],
+                     {type: 'POST',
+                      dataType: 'json',
+                      complete: Platformer._showStatus,
+                      success: function (data, status, xhr) {
+                        if (data != null) {
+                          pf.updateUserids(data.userid);
+                        }
+                      }
+                     });
      },
 
      /* Return the next server to be used. */
-     nextServer: function () {
+     _nextServer: function () {
        var unused_count = this.unused_servers.length;
 
        // If all servers have been used, refill the unused array.
@@ -95,8 +99,13 @@
        server = this.unused_servers[choice];
        this.unused_servers.splice(choice, 1);
 
-       // Form the url for the chosen server.
+       // Return the url for the chosen server.
        return server;
+     },
+
+     /* Set the active userid. */
+     setActiveUserid: function (id) {
+       this.userid = id;
      },
 
      /*
@@ -105,12 +114,22 @@
       */
      testUseridExists: function () {
        var pf = this;
-       result = $.ajax({
-                url: this.nextServer() + '/user/' + this.userid,
-                type: 'HEAD',
-                complete: Platformer._showStatus
-              });
+       var params = {
+         type: 'HEAD',
+         complete: Platformer._showStatus,
+         beforeSend: function (xhr) {
+           xhr.setRequestHeader("X-Platformer-Query-Token", Math.uuid());
+           xhr.setRequestHeader("X-Platformer-Query-Age", "0");
+         }
+       };
+       params.url = this._nextServer() + '/user/' + this.userid;
+       var xhr = $.ajax(params);
+       //this._request('/user/' + this.userid,
+       //              [200], params);
      },
+
+     // Items (select, buttons) to hide when there's no userid selected.
+     _hideItems: ['#choose-userid', '#delete-userid', '#clear-userids', '#test-exists'],
 
      /*
       * Update the list of userids, selecting the active one.
@@ -138,18 +157,31 @@
                                            '>' + value + '</option>');
               });
 
-       // Hide the select and the delete button if there are no userids.
+       // Hide the select and the buttons if there are no userids.
        if (this.userid == null) {
-         $('#choose-userid').hide();
-         $('#delete-userid').hide();
-         $('#clear-userids').hide();
-         $('#test-exists').hide();
+         $.each(this._hideItems, function (_, id) { $(id).hide(); });
        }
        else {
-         $('#choose-userid').show();
-         $('#delete-userid').show();
-         $('#clear-userids').show();
-         $('#text-exists').show();
+         $.each(this._hideItems, function (_, id) { $(id).show(); });
+       }
+     },
+
+     // Apply a given ajax request to the next server (trying additional servers if one fails).
+     _request: function(suffix, successCode, ajaxParams) {
+       var firstServer = server = this._nextServer();
+
+       var success = false;
+       do {
+         ajaxParams.url = server + suffix;
+
+         var xhr = $.ajax(ajaxParams);
+         success = ($.inArray(xhr.status, successCode) > -1);
+         if (!success) {
+           server = this._nextServer();
+         }
+       } while (!success && server != firstServer);
+       if (!success) {
+         Platformer._showMessage('Could not reach any servers.', 'error');
        }
      },
 
@@ -159,7 +191,10 @@
      },
 
      _showStatus: function (xhr, textStatus) {
-       Platformer._showMessage('Status: ' + xhr.status, xhr.status == 404 ? 'error' : 'info');
+       var status = xhr.status;
+       if (status > 0) {
+         Platformer._showMessage('Status: ' + status, status == 404 ? 'error' : 'info');
+       }
      },
 
      // HELPER FUNCTIONS

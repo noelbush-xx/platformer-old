@@ -3,7 +3,7 @@
 %% @doc miscellaneous utilities.
 -module(util).
 
--export([md5/1, shuffle/1]).
+-export([get_param/2, md5/1, shuffle/1]).
 
 %% From http://rosettacode.org/wiki/MD5#Erlang
 md5(S) ->
@@ -30,3 +30,7 @@ randomize(List) ->
                   end, List),
     {_, D1} = lists:unzip(lists:keysort(1, D)), 
     D1.
+
+get_param(Par, Default) ->
+    case application:get_env(Par) of undefined -> Default; {ok, Val} -> Val end.
+            

@@ -41,10 +41,10 @@ upgrade() ->
 %% @spec init([]) -> SupervisorTree
 %% @doc supervisor callback.
 init([]) ->
-    Ip = get_param(ip, "0.0.0.0"),
-    Port = get_param(port, 8000),
-    DispatchPath = get_param(dispatch, "priv/dispatch.conf"),
-    LogDir = get_param(log_dir, "priv/log"),
+    Ip = util:get_param(ip, "0.0.0.0"),
+    Port = util:get_param(port, 8000),
+    DispatchPath = util:get_param(dispatch, "priv/dispatch.conf"),
+    LogDir = util:get_param(log_dir, "priv/log"),
     
     {ok, Dispatch} = file:consult(DispatchPath),
 
@@ -57,14 +57,8 @@ init([]) ->
     Web = {webmachine_mochiweb,
 	   {webmachine_mochiweb, start, [Config]},
 	   permanent, 5000, worker, dynamic},
-
-    %% Ensure any preconfigured servers are in the database.
-    {ok, Servers} = application:get_env(servers),
-    [server_resource:new_server(Address) || Address <- Servers],
+    
+    server_resource:load_preconfigured(),
 
     Processes = [Web],
     {ok, {{one_for_one, 10, 10}, Processes}}.
-
-get_param(Par, Default) ->
-    case application:get_env(Par) of undefined -> Default; {ok, Val} -> Val end.
-            

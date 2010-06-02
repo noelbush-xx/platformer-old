@@ -13,7 +13,7 @@
 %% OPTIONS     /server/address_hash          200 Access-Control-Allow-Methods: HEAD, DELETE, OPTIONS
 
 -module(server_resource).
--export([init/1, get_servers/0, new_server/1, new_server/2, to_json/2]).
+-export([init/1, get_servers/0, load_preconfigured/0, new_server/1, new_server/2, server_exists/1, to_json/2]).
 -export([allow_missing_post/2, allowed_methods/2,
          content_types_accepted/2,
          content_types_provided/2, create_path/2,
@@ -93,7 +93,7 @@ malformed_request(ReqData, Context) ->
                  ReqData,
                  Context#context{address=Address}}
         end,
-    {MF, wrq:set_resp_header("Access-Control-Allow-Origin", "*", NewReqData), NewContext}.
+    {MF, pfr:postprocess_rd(NewReqData), NewContext}.
 
 moved_permanently(ReqData, Context) ->
     {false, ReqData, Context}.
@@ -183,10 +183,8 @@ get_servers() ->
 
 %% @spec server_exists(int()) -> bool()
 server_exists(Hash) ->
-    %% First check the local database.
     Result = platformer_db:find(qlc:q([X || X <- mnesia:table(server),
                                             X#server.hash == Hash])),
-
     case length(Result) of
         1 ->
             Server = hd(Result),
@@ -195,10 +193,12 @@ server_exists(Hash) ->
                 deleted -> {false, deleted}
             end;
         0 ->
-            %% TODO: Go check with other servers
             {false, unknown};
         _ ->
             throw({codingError, "Multiple results found for hash!"})
     end.
     
-        
+%% Ensure any preconfigured servers are in the database.
+load_preconfigured() ->        
+    {ok, Servers} = application:get_env(platformer, servers),
+    [server_resource:new_server(Address) || Address <- Servers].

@@ -2,8 +2,9 @@
 <html>
   <head>
     <title>Platformer Javascript Web User Client</title>
-    <script type="text/javascript" src="script/jquery-1.4.2.min.js"><!-- --></script>
+    <script type="text/javascript" src="script/jquery.js"><!-- --></script>
     <script type="text/javascript" src="script/platformer.js"><!-- --></script>
+    <script type="text/javascript" src="script/Math.uuid.js"><!-- --></script>
     <link rel="stylesheet" type="text/css" href="style/platformer.css" />
   </head>
   <body>
@@ -17,7 +18,7 @@
     <section id="userid">
       <div id="choose-userid">
         <label for="active-userid">Active userid:</label>
-        <select id="active-userid">
+        <select id="active-userid" onchange="Platformer.setActiveUserid(this.value);">
         </select>
       </div>
     </section>
