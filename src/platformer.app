@@ -1,15 +1,30 @@
+%%-*- mode: erlang -*-
 {application, platformer,
- [{description, "Platformer node"},
-  {vsn, "0.1"},
+ [
+  {description, "platformer"},
+  {vsn, "1"},
   {modules, [
              platformer,
              platformer_app,
              platformer_sup,
-             platformer_deps,
-             platformer_resource,
-             wmtrace_resource
+             platformer_db,
+             platformer_error_handler,
+             pfr,
+             json,
+             util,
+             uuid,
+             ping_resource,
+             user_resource,
+             server_resource
             ]},
   {registered, []},
-  {mod, {platformer_app, []}},
-  {env, []},
-  {applications, [kernel, stdlib, crypto]}]}.
+  {applications, [
+                  kernel,
+                  stdlib,
+                  crypto,
+                  mochiweb,
+                  webmachine
+                 ]},
+  {mod, { platformer_app, []}},
+  {env, []}
+ ]}.

@@ -1,7 +1,7 @@
 %% @author Noel Bush <noel@platformer.org>
 %% @copyright 2010 Noel Bush.
 
-%% @doc TEMPLATE.
+%% @doc platformer startup code
 
 -module(platformer).
 -author('Noel Bush <noel@platformer.org>').
@@ -24,13 +24,14 @@ start_link() ->
 %% @spec start() -> ok
 %% @doc Start the platformer server.
 start() ->
+    io:format("*********** Oh, this is only START. :-(~n"),
     setup(),
     application:start(platformer).
 
 setup() ->
-    platformer_deps:ensure(),
     ensure_started(inets),
     ensure_started(crypto),
+    ensure_started(mochiweb),
     ensure_started(mnesia),
     application:set_env(webmachine, webmachine_logger_module, 
                         webmachine_logger),
@@ -43,5 +44,6 @@ stop() ->
     application:stop(inets),
     application:stop(mnesia),
     application:stop(webmachine),
+    application:stop(mochiweb),
     application:stop(crypto),
     Res.

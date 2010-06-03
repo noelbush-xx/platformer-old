@@ -200,5 +200,9 @@ server_exists(Hash) ->
     
 %% Ensure any preconfigured servers are in the database.
 load_preconfigured() ->        
-    {ok, Servers} = application:get_env(platformer, servers),
-    [server_resource:new_server(Address) || Address <- Servers].
+    case application:get_env(platformer, servers) of
+        {ok, Servers} ->
+            [server_resource:new_server(Address) || Address <- Servers];
+        _ ->
+            true
+    end.

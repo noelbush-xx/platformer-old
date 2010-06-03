@@ -2,11 +2,10 @@ ERL          ?= erl
 EBIN_DIRS    := $(wildcard deps/*/ebin)
 APP          := platformer
 
-all: erl ebin/$(APP).app
+all: ebin/$(APP).app erl
 
 erl:
-	@$(ERL) -pa $(EBIN_DIRS) -noinput +B \
-	  -eval 'case make:all() of up_to_date -> halt(0); error -> halt(1) end.'
+	./rebar compile
 
 docs:
 	@erl -noshell -run edoc_run application '$(APP)' '"."' '[]'

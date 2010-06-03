@@ -4,7 +4,7 @@
 %% @doc Supervisor for the platformer application.
 
 -module(platformer_sup).
--author('author <author@example.com>').
+-author('Noel Bush <noel@platformer.org>').
 
 -behaviour(supervisor).
 
@@ -41,24 +41,33 @@ upgrade() ->
 %% @spec init([]) -> SupervisorTree
 %% @doc supervisor callback.
 init([]) ->
-    Ip = util:get_param(ip, "0.0.0.0"),
-    Port = util:get_param(port, 8000),
-    DispatchPath = util:get_param(dispatch, "priv/dispatch.conf"),
-    LogDir = util:get_param(log_dir, "priv/log"),
-    
-    {ok, Dispatch} = file:consult(DispatchPath),
+    %% Read config values from a(n optionally supplied) config file
+    Ip = util:get_param(ip, case os:getenv("WEBMACHINE_IP") of false -> "0.0.0.0"; Any -> Any end),
+    Ports = util:get_param(ports, [8000]),
+    PrivDir = filename:join([filename:dirname(code:which(?MODULE)), "..", "priv"]),
+    DispatchPath = util:get_param(dispatch, filename:join([PrivDir, "dispatch.conf"])),
+    LogDir = util:get_param(log_dir, filename:join(PrivDir, "log")),
 
-    Config = [{ip, Ip},
-              {port, Port},
-              {log_dir, LogDir},
-              {dispatch, Dispatch},
-              {error_handler, platformer_error_handler}],
+    Dispatch =
+        case file:consult(DispatchPath) of
+            {ok, File} -> File;
+            {error, Error} -> throw({error, "Error reading dispatch file at " ++ DispatchPath, Error})
+        end,
 
-    Web = {webmachine_mochiweb,
-	   {webmachine_mochiweb, start, [Config]},
-	   permanent, 5000, worker, dynamic},
-    
-    server_resource:load_preconfigured(),
+    BaseConfig = [{ip, Ip},
+                  {log_dir, LogDir},
+                  {dispatch, Dispatch},
+                  {error_handler, platformer_error_handler}],
 
-    Processes = [Web],
+    Processes = [config_process(BaseConfig, Port) || Port <- Ports],
+
+    %%server_resource:load_preconfigured(),
+
     {ok, {{one_for_one, 10, 10}, Processes}}.
+
+config_process(BaseConfig, Port) ->
+    ChildName = list_to_atom(lists:concat(["platformer_webmachine_", Port])),
+    WebConfig = [{child_name, ChildName}|[{port, Port}|BaseConfig]],
+    {ChildName,
+     {webmachine_mochiweb, start, [WebConfig]},
+     permanent, 5000, worker, dynamic}.

@@ -31,7 +31,7 @@ reset() ->
     mnesia:create_table(server, [{disc_copies, [node()]}, {attributes, record_info(fields, server)}]),
     mnesia:create_table(query_token, [{disc_copies, [node()]}, {attributes, record_info(fields, query_token)}]),
     server_resource:load_preconfigured(),
-    {ok}.
+    ok.
 
 transaction(F) ->
     case mnesia:transaction(F) of
