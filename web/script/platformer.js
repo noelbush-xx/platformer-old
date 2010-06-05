@@ -192,9 +192,7 @@
 
      _showStatus: function (xhr, textStatus) {
        var status = xhr.status;
-       if (status > 0) {
-         Platformer._showMessage('Status: ' + status, status == 404 ? 'error' : 'info');
-       }
+       Platformer._showMessage('Status: ' + status, status == 404 ? 'error' : 'info');
      },
 
      // HELPER FUNCTIONS

@@ -43,10 +43,10 @@ upgrade() ->
 init([]) ->
     %% Read config values from a(n optionally supplied) config file
     Ip = util:get_param(ip, case os:getenv("WEBMACHINE_IP") of false -> "0.0.0.0"; Any -> Any end),
-    Ports = util:get_param(ports, [8000]),
+    Port = util:get_param(port, 8000),
     PrivDir = filename:join([filename:dirname(code:which(?MODULE)), "..", "priv"]),
-    DispatchPath = util:get_param(dispatch, filename:join([PrivDir, "dispatch.conf"])),
-    LogDir = util:get_param(log_dir, filename:join(PrivDir, "log")),
+    DispatchPath = filename:join([PrivDir, util:get_param(dispatch, "dispatch.conf")]),
+    LogDir = filename:join([PrivDir, util:get_param(log_dir, "log")]),
 
     Dispatch =
         case file:consult(DispatchPath) of
@@ -54,20 +54,23 @@ init([]) ->
             {error, Error} -> throw({error, "Error reading dispatch file at " ++ DispatchPath, Error})
         end,
 
-    BaseConfig = [{ip, Ip},
-                  {log_dir, LogDir},
-                  {dispatch, Dispatch},
-                  {error_handler, platformer_error_handler}],
+    WebConfig = [{ip, Ip},
+                 {port, Port},
+                 {log_dir, LogDir},
+                 {dispatch, Dispatch},
+                 {error_handler, platformer_error_handler}],
+io:format("webconfig: ~p~n", [WebConfig]),
+    Web = {webmachine_mochiweb, {webmachine_mochiweb, start, [WebConfig]},
+           permanent, 5000, worker, dynamic},
 
-    Processes = [config_process(BaseConfig, Port) || Port <- Ports],
+    %% Reset the db if instructed to; in any case, check that pre-supplied servers are in db
+    %% case lists:member("reset-db", init:get_plain_arguments()) of
+    %%     true -> platformer_db:reset();
+    %%     false -> server_resource:load_preconfigured()
+    %% end,
 
-    %%server_resource:load_preconfigured(),
+    %% Write the pid to a file
+    PidFile = filename:join([PrivDir, lists:concat([string:sub_word(atom_to_list(node()), 1, $@), ".pid"])]),
+    file:write_file(PidFile, os:getpid()),
 
-    {ok, {{one_for_one, 10, 10}, Processes}}.
-
-config_process(BaseConfig, Port) ->
-    ChildName = list_to_atom(lists:concat(["platformer_webmachine_", Port])),
-    WebConfig = [{child_name, ChildName}|[{port, Port}|BaseConfig]],
-    {ChildName,
-     {webmachine_mochiweb, start, [WebConfig]},
-     permanent, 5000, worker, dynamic}.
+    {ok, {{one_for_one, 10, 10}, [Web]}}.

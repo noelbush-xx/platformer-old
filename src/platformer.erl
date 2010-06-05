@@ -24,7 +24,6 @@ start_link() ->
 %% @spec start() -> ok
 %% @doc Start the platformer server.
 start() ->
-    io:format("*********** Oh, this is only START. :-(~n"),
     setup(),
     application:start(platformer).
 

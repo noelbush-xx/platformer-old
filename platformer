@@ -1,0 +1,102 @@
+#!/bin/bash
+COMMAND="/usr/bin/erl"
+USAGE="usage: $0 [options] {start|stop|restart|status}"
+
+. /lib/lsb/init-functions || (echo "Missing LSB init-functions; this script won't work right." && exit 1)
+
+BASE_DIR=$(cd `dirname $0` && pwd)
+PRIV_DIR="$BASE_DIR/priv"
+
+# Defaults
+PORT=8000
+CONFIG="app"
+
+set -- `getopt --options p:rBc:h --longoptions port:,reset-db,background,config:,help --unquoted -- "$@"`
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -B|--background)  BACKGROUND=true; DETACHED="-detached";;
+        -c|--config)      CONFIG=$2; shift;;
+        -p|--port)        PORT=$2; PORTSPEC="-platformer port $PORT"; shift;;
+        -r|--reset-db)    RESET_DB=" reset-db";;
+        -h|--help)
+                          echo $USAGE;
+                          echo "options (specify any or none):"
+                          echo "-p|--port=PORT         configure the Platformer node to listen on port PORT (default: $PORT)"
+                          echo "-r|--reset-db          reset the database on startup"
+                          echo "-B|--background        run in the background (no shell)"
+                          echo "-c|--config=NAME       read application configuration from ./priv/NAME.config (default: $CONFIG)"
+                          echo "-h|--help              print this help message"
+                          echo
+                          echo "command (specify one):"
+                          echo "start                  start the specified Platformer node"
+                          echo "stop                   stop the specified Platformer node"
+                          echo "restart                restart the specified Platformer node"
+                          echo "status                 check whether the specified Platformer node is running"
+                          shift
+                          exit 0;;
+        --)               shift; break;;
+        *)                echo >&2 $USAGE; exit 1;;
+    esac
+    shift
+done
+
+if [ -n "$PORTSPEC" ]; then
+    NODENAME="platformer_$PORT"
+else
+    NODENAME="platformer"
+fi
+
+PLAIN_ARGS="$RESET_DB"
+if [ -n "$PLAIN_ARGS" ]; then
+    PLAIN_ARGS="-- $PLAIN_ARGS"
+fi
+
+PIDFILE=$PRIV_DIR/$NODENAME.pid
+
+ARGUMENTS="-pa $PWD/ebin $PWD/deps/webmachine/ebin $PWD/deps/webmachine/deps/mochiweb/ebin -boot start_sasl -s reloader -s platformer -sname $NODENAME -config $PRIV_DIR/$CONFIG $PORTSPEC $DETACHED $PLAIN_ARGS"
+
+DAEMON_START_CMD="start-stop-daemon --start --quiet --oknodo --exec $COMMAND --chdir $BASE_DIR --pidfile $PIDFILE -- $ARGUMENTS"
+DAEMON_STOP_CMD="start-stop-daemon --stop --quiet --retry 5 --oknodo --pidfile $PIDFILE"
+
+case "$@" in
+    start)
+        if [ -n $BACKGROUND ]; then
+            log_begin_msg "Starting Platformer node $NODENAME"
+        fi
+        $DAEMON_START_CMD
+        if [ -n $BACKGROUND ]; then
+            log_end_msg $?
+        fi
+        ;;
+    stop)
+        log_begin_msg "Stopping Platformer node $NODENAME"
+        $DAEMON_STOP_CMD
+        rm $PIDFILE
+        log_end_msg $?
+        ;;
+    restart)
+        log_begin_msg "Restarting Platformer node $NODENAME"
+	if $DAEMON_STOP_CMD; then
+	    $DAEMON_START_CMD
+	fi
+	log_end_msg $?
+	;;
+    status)
+	echo -n "Status of Platformer node: "
+	if [ ! -r "$PIDFILE" ]; then
+	    echo "$NODENAME is not running."
+	    exit 3
+	fi
+	read pid < "$PIDFILE"
+        if ps -p "$pid" > /dev/null 2>&1; then
+	    echo "$NODENAME is running."
+	    exit 0
+	else
+	    echo "$NODENAME is not running but pidfile $PIDFILE exists."
+	    exit 1
+	fi
+	;;
+        
+    *)
+        echo >&2 $USAGE; exit 1;;
+esac

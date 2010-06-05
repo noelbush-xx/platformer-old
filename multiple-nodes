@@ -1,0 +1,75 @@
+#!/bin/bash
+USAGE="usage: $0 [options] {start|stop|restart|status}"
+
+. /lib/lsb/init-functions || (echo "Missing LSB init-functions; this script won't work right." && exit 1)
+
+BASE_DIR=$(cd `dirname $0` && pwd)
+COMMAND="$BASE_DIR/platformer"
+PRIV_DIR="$BASE_DIR/priv"
+
+# Defaults
+NODE_COUNT=2
+START_PORT=8000
+CONFIG="app"
+
+ARGS="--background"
+
+set -- `getopt --options n:s:rc:h --longoptions number:,start:,reset-db,config:,help --unquoted -- "$@"`
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -n|--number)      NODE_COUNT=$2; shift;;
+        -s|--start)       START_PORT=$2; shift;;
+        -c|--config)      ARGS="$ARGS --config=$2"; shift;;
+        -l|--log-config)  ARGS="$ARGS --log-config=$2"; shift;;
+        -r|--reset-db)    ARGS="$ARGS --reset-db";;
+        -h|--help)
+                          echo $USAGE;
+                          echo "options (specify any or none):"
+                          echo "-n|--number=NUMBER     how many Platformer nodes to start (default: $NODE_COUNT)"
+                          echo "-s|--start=PORT        the port number to start with (default: $START_PORT)"
+                          echo "-r|--reset-db          reset the database(s) on startup"
+                          echo "-c|--config=NAME       read application configuration from NAME.config (default: $APP_CONFIG)"
+                          echo "-h|--help              print this help message"
+                          echo
+                          echo "command (specify one):"
+                          echo "start                  start the specified Platformer nodes"
+                          echo "stop                   stop the specified Platformer nodes"
+                          echo "restart                restart the specified Platformer nodes"
+                          echo "status                 check whether the specified Platformer nodes are running"
+                          shift
+                          exit 0;;
+        --)               shift; break;;
+        *)                echo >&2 $USAGE; exit 1;;
+    esac
+    shift
+done
+
+END_PORT=$(( $START_PORT + $NODE_COUNT - 1 ))
+case "$@" in
+    start)
+        log_action_msg "Starting $NODE_COUNT Platformer nodes, beginning at port $START_PORT."
+        for PORT in $(seq $START_PORT $END_PORT ); do
+            $COMMAND $ARGS --port=$PORT start
+        done
+        ;;
+    stop)
+        log_action_msg "Stopping $NODE_COUNT Platformer nodes."
+        for PORT in $(seq $START_PORT $END_PORT); do
+            $COMMAND $ARGS --port=$PORT stop
+        done
+        ;;
+    restart)
+        log_action_msg "Restarting $NODE_COUNT Platformer nodes."
+        for PORT in $(seq $START_PORT $END_PORT); do
+            $COMMAND $ARGS --port=$PORT restart
+        done
+	;;
+    status)
+        for PORT in $(seq $START_PORT $END_PORT); do
+            $COMMAND $ARGS --port=$PORT status
+        done
+	;;
+        
+    *)
+        echo >&2 $USAGE; exit 1;;
+esac

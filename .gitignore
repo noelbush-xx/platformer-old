@@ -3,3 +3,4 @@ Mnesia*
 erl_crash.dump
 ebin/*
 priv/log/*
+priv/*.pid

@@ -184,6 +184,7 @@ user_exists({Id, CheckOtherServers}) ->
     end.
     
 user_exists(Id, [Server|Servers]) ->
+    %% TODO: Do not check self!
     case httpc:request(head, {lists:concat([Server#server.address, "/user/", Id]),
                               [{"X-Platformer-Node", get_node_address()}]}, [], []) of
         {ok, {{_, Status, _}, _, _}} ->
