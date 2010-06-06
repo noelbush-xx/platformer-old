@@ -7,7 +7,7 @@
 %% Method      URI                    -->  Successful Response
 %% POST        /user                       201 Content-Type: text/javascript
 %%                                               Location: URI of new userid
-%%                                               {"userid":new_userid};
+%%                                               {"userid":new_user};
 %% HEAD        /user/some_userid           200 (if id exists)
 %% DELETE      /user/some_userid           204
 %% OPTIONS     /user                       200 Access-Control-Allow-Methods: POST, OPTIONS
@@ -52,7 +52,7 @@ content_types_provided(ReqData, Context) ->
     {[{"text/javascript", to_json}], ReqData, Context}.
 
 create_path(ReqData, Context) ->
-    {Id, Path} = new_userid(),
+    {Id, Path} = new_user(),
     {Path, wrq:set_resp_header("Location", Path, ReqData), Context#context{userid=Id, path=Path}}.
 
 delete_completed(ReqData, Context) ->
@@ -139,8 +139,8 @@ delete_userid(Id) ->
             false
     end.
 
-%% @spec new_userid() -> {Id, Path}
-new_userid() ->
+%% @spec new_user() -> {Id, Path}
+new_user() ->
     Id = string:concat("platformer_user_", uuid:to_string(uuid:v4())),
     case platformer_db:write(#user{id=Id, status=active, last_modified=now()}) of
         {atomic, ok} ->

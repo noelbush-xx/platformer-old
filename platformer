@@ -32,6 +32,7 @@ while [ $# -gt 0 ]; do
                           echo "stop                   stop the specified Platformer node"
                           echo "restart                restart the specified Platformer node"
                           echo "status                 check whether the specified Platformer node is running"
+                          echo "connect                connect to the specified Platformer node"
                           shift
                           exit 0;;
         --)               shift; break;;
@@ -96,7 +97,9 @@ case "$@" in
 	    exit 1
 	fi
 	;;
-        
+    connect)
+        $COMMAND -sname local -remsh $NODENAME@$HOSTNAME
+        ;;       
     *)
         echo >&2 $USAGE; exit 1;;
 esac

@@ -29,6 +29,15 @@
        this.updateUserids();
      },
 
+     /*
+      * Functions to be called by the page
+      */
+
+     /* Clear the html element holding logging output. */
+     clearLog: function () {
+       $('#log').text('');
+     },
+
      /* Clear all stored userids. */
      clearStoredUserids: function () {
        localStorage.removeItem('userids');
@@ -46,7 +55,7 @@
        this._request('/user/' + pf.userid,
                      [204],
                      {type: 'DELETE',
-                      complete: function (xhr, textStatus) {
+                      success: function (data, textStatus, xhr) {
                         status = Platformer._showStatus(xhr, textStatus);
                         switch (status) {
                         case 204:
@@ -75,32 +84,19 @@
                      [201],
                      {type: 'POST',
                       dataType: 'json',
-                      complete: Platformer._showStatus,
-                      success: function (data, status, xhr) {
-                        if (data != null) {
+                      success: Platformer._showStatus,
+                      success: function (data, textStatus, xhr) {
+                        status = Platformer._showStatus(xhr, textStatus);
+                        if (status == 201) {
                           pf.updateUserids(data.userid);
                         }
                       }
                      });
      },
 
-     /* Return the next server to be used. */
-     _nextServer: function () {
-       var unused_count = this.unused_servers.length;
-
-       // If all servers have been used, refill the unused array.
-       if (unused_count == 0) {
-         this.unused_servers = this.servers.slice(0);
-         unused_count = this.unused_servers.length;
-       }
-
-       // Choose a server randomly and remove it from the unused array.
-       var choice = Math.floor(Math.random() * unused_count);
-       server = this.unused_servers[choice];
-       this.unused_servers.splice(choice, 1);
-
-       // Return the url for the chosen server.
-       return server;
+     /* Append a message to the log element. */
+     log: function(message) {
+       $('#log').append('<p>' + message + '</p>');
      },
 
      /* Set the active userid. */
@@ -113,19 +109,17 @@
       * It might not if it has been deleted elsewhere.
       */
      testUseridExists: function () {
-       var pf = this;
-       var params = {
-         type: 'HEAD',
-         complete: Platformer._showStatus,
-         beforeSend: function (xhr) {
-           xhr.setRequestHeader("X-Platformer-Query-Token", Math.uuid());
-           xhr.setRequestHeader("X-Platformer-Query-Age", "0");
-         }
-       };
-       params.url = this._nextServer() + '/user/' + this.userid;
-       var xhr = $.ajax(params);
-       //this._request('/user/' + this.userid,
-       //              [200], params);
+       this._request('/user/' + this.userid,
+                    [200],
+                    {type: 'HEAD',
+                     success: function (data, textStatus, xhr) {
+                       Platformer._showStatus(xhr, textStatus);
+                     },
+                     beforeSend: function (xhr) {
+                       xhr.setRequestHeader("X-Platformer-Query-Token", Math.uuid());
+                       xhr.setRequestHeader("X-Platformer-Query-Age", "0");
+                     }
+                    });
      },
 
      // Items (select, buttons) to hide when there's no userid selected.
@@ -166,28 +160,80 @@
        }
      },
 
-     // Apply a given ajax request to the next server (trying additional servers if one fails).
-     _request: function(suffix, successCode, ajaxParams) {
-       var firstServer = server = this._nextServer();
+     /*
+      * Utility functions
+      */
 
-       var success = false;
-       do {
-         ajaxParams.url = server + suffix;
+     /*
+      * Choose the next server to be used.
+      * The optional avoid parameter can specify that we avoid
+      * returning the specified servers, returning undefined
+      * if there are no remaining choices.
+      */
+     _nextServer: function (avoid) {
+       var unused_count = this.unused_servers.length;
 
-         var xhr = $.ajax(ajaxParams);
-         success = ($.inArray(xhr.status, successCode) > -1);
-         if (!success) {
-           server = this._nextServer();
-         }
-       } while (!success && server != firstServer);
-       if (!success) {
-         Platformer._showMessage('Could not reach any servers.', 'error');
+       // If all servers have been used, refill the unused array.
+       if (unused_count == 0) {
+         this.unused_servers = this.servers.slice(0);
+         unused_count = this.unused_servers.length;
        }
+
+       // Choose a server randomly and remove it from the unused array.
+       var choice = Math.floor(Math.random() * unused_count);
+       server = this.unused_servers[choice];
+       this.unused_servers.splice(choice, 1);
+
+       // Return the url for the chosen server (avoiding the given one if necessary).
+       if (avoid != undefined && ($.inArray(server, avoid) > -1)) {
+         if (this.unused_servers.length > 0) {
+           return this._nextServer(avoid);
+         }
+         return undefined;
+       }
+       return server;
+     },
+
+     /* Apply a given ajax request to the next server (trying additional servers if one fails). */
+     _request: function(suffix, successCode, ajaxParams, triedServers) {
+       var server = this._nextServer(triedServers);
+
+       // Save the original complete function.
+       ajaxParams.originalComplete = (ajaxParams.originalComplete ? ajaxParams.originalComplete : ajaxParams.complete);
+
+       // If we've tried all servers and still nothing, call the original error function and give up.
+       if (server == undefined) {
+         Platformer._showMessage('Could not reach any servers.', 'error');
+         ajaxParams.originalComplete();
+         ajaxParams.noServersReachable = true;
+         return;
+       }
+
+       triedServers = (triedServers == undefined ? [] : triedServers);
+       triedServers.push(server);
+
+       ajaxParams.url = server + suffix;
+       Platformer.log('Trying ' + ajaxParams.type + ' request to ' + ajaxParams.url);
+
+       var pf = this;
+
+       // jQuery does not call error() all the time we want it to, and sometimes calls complete() too many times.
+       ajaxParams.complete = function (xhr, textStatus, error) {
+         if ((xhr == undefined || xhr.status === 0) && !ajaxParams.errorHandled && !ajaxParams.noServersReachable) {
+           ajaxParams.errorHandled = true;
+           Platformer.log('Request did not succeed.');
+           pf._request(suffix, successCode, ajaxParams, triedServers);
+         }
+       };
+
+       ajaxParams.errorHandled = false;
+       $.ajax(ajaxParams);
      },
 
      _showMessage: function (message, type) {
        type = type == undefined ? 'info' : type;
        $('#messages').html('<span class="' + type + '">' + message + '</span>');
+       Platformer.log(message);
      },
 
      _showStatus: function (xhr, textStatus) {
@@ -195,7 +241,9 @@
        Platformer._showMessage('Status: ' + status, status == 404 ? 'error' : 'info');
      },
 
-     // HELPER FUNCTIONS
+     /*
+      * Storage and retrieval functions
+      */
 
      /* Load known userids from local storage; return empty array if none defined. */
      _loadUserids: function () {

@@ -10,3 +10,9 @@
 .info {
   color: green;
 }
+#log p {
+  font-family: monospace;
+  padding: 0;
+  margin: 0;
+  font-size: smaller;
+}
