@@ -46,31 +46,58 @@ init([]) ->
     Port = util:get_param(port, 8000),
     PrivDir = filename:join([filename:dirname(code:which(?MODULE)), "..", "priv"]),
     DispatchPath = filename:join([PrivDir, util:get_param(dispatch, "dispatch.conf")]),
-    LogDir = filename:join([PrivDir, util:get_param(log_dir, "log")]),
+    WMLogDir = filename:join([PrivDir, util:get_param(log_dir, "log")]),
 
-    Dispatch =
-        case file:consult(DispatchPath) of
-            {ok, File} -> File;
-            {error, Error} -> throw({error, "Error reading dispatch file at " ++ DispatchPath, Error})
-        end,
-
-    WebConfig = [{ip, Ip},
-                 {port, Port},
-                 {log_dir, LogDir},
-                 {dispatch, Dispatch},
-                 {error_handler, platformer_error_handler}],
-io:format("webconfig: ~p~n", [WebConfig]),
-    Web = {webmachine_mochiweb, {webmachine_mochiweb, start, [WebConfig]},
-           permanent, 5000, worker, dynamic},
-
-    %% Reset the db if instructed to; in any case, check that pre-supplied servers are in db
-    %% case lists:member("reset-db", init:get_plain_arguments()) of
-    %%     true -> platformer_db:reset();
-    %%     false -> server_resource:load_preconfigured()
-    %% end,
+    %% Configure Platformer logging.
+    application:start(log4erl),
+    log4erl:conf(filename:join([PrivDir, "log4erl.conf"])),
 
     %% Write the pid to a file
     PidFile = filename:join([PrivDir, lists:concat([string:sub_word(atom_to_list(node()), 1, $@), ".pid"])]),
     file:write_file(PidFile, os:getpid()),
+
+    %% Configure the logger to include the node name.
+    NodeName = atom_to_list(node()),
+    case log4erl:change_format(file, "[" ++ string:substr(NodeName, 1, string:chr(NodeName, $@) - 1)  ++ "][%L] %j %t %l%n") of
+        {error, E0} -> io:format("Error configuring logger: ~p~n", [E0]);
+        ok -> ok
+    end,
+
+    %% Load the webmachine dispatch config.
+    Dispatch =
+        case file:consult(DispatchPath) of
+            {ok, File} -> File;
+            {error, E1} -> log4erl:error("Error reading dispatch file at " ++ DispatchPath, E1)
+        end,
+
+    %% Prepare the configuration for webmachine/mochiweb.
+    WebConfig = [{ip, Ip},
+                 {port, Port},
+                 {log_dir, WMLogDir},
+                 {dispatch, Dispatch},
+                 {error_handler, platformer_error_handler}],
+
+    Web = {webmachine_mochiweb, {webmachine_mochiweb, start, [WebConfig]},
+           permanent, 5000, worker, dynamic},
+
+    %% Check that the database is set up (dev purposes only -- later need real release management).
+    platformer_db:check_tables(),
+
+    %% Reset the db if instructed to; in any case, check that pre-supplied servers are in db
+    case lists:member("reset-db", init:get_plain_arguments()) of
+        true -> platformer_db:reset();
+        false -> server_resource:load_preconfigured()
+    end,
+
+    %% Announce self to other servers, seek peers, and set up timed announcements and peer searches.
+    liaison:announce_self(),
+    liaison:seek_peers(),
+    crone:start([{{daily,{every,{5,min},{between,{12,am},{11,55,pm}}}},
+                  {liaison,announce_self,[]}}]),
+    crone:start([{{daily,{every,{5,min},{between,{12,am},{11,55,pm}}}},
+                  {liaison,seek_peers,[]}}]),
+    
+                     
+    log4erl:info("Starting up Platformer node listening on port ~B.", [Port]),
 
     {ok, {{one_for_one, 10, 10}, [Web]}}.

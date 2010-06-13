@@ -4,18 +4,26 @@
   {description, "platformer"},
   {vsn, "1"},
   {modules, [
+             %% Basic modules
              platformer,
              platformer_app,
              platformer_sup,
              platformer_db,
              platformer_error_handler,
+             %% Webmachine Resources
+             ping_resource,
+             user_resource,
+             server_resource,
+             %% Utility modules
+             liaison,
              pfr,
              json,
              util,
-             uuid,
-             ping_resource,
-             user_resource,
-             server_resource
+             %% Externals
+             crone,
+             jsonerl,
+             timed_supervisor,
+             uuid
             ]},
   {registered, []},
   {applications, [

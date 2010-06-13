@@ -1,14 +1,50 @@
-#userid * label {
+#userids {
+  width: 29em;
+}
+#userid-buttons {
+  margin-top: 1em;
+}
+button:first-child {
+  margin-left: 0;
+}
+#users-and-servers * label {
   font-weight: bold;
 }
-#userid {
-  margin: 1em 0;
+#users-and-servers {
+  margin: 1em 0 0 0;
 }
-.error {
+#users-and-servers td {
+  padding: 0 2em 0 0;
+  vertical-align: top;
+}
+#users-and-servers td:last-child {
+  padding-right: 0;
+}
+#known-servers {
+  width: 10em;
+}
+#known-servers ul {
+  list-style-type: none;
+  padding-left: 0;
+  margin: 0;
+}
+#known-servers li {
+  font-family: monospace;
+}
+.error, #servers li.unavailable {
   color: red;
 }
-.info {
+.info, #servers li.available {
   color: green;
+}
+#messages {
+  height: 2em;
+}
+#log {
+  margin-top: .4em;
+  height: 16em;
+  overflow-y: scroll;
+  border: solid 1px gray;
 }
 #log p {
   font-family: monospace;

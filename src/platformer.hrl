@@ -1,3 +1,3 @@
 -record(user, {id, status, last_modified}).
--record(server, {address, status, rating, hash, last_modified}).
+-record(server, {hash, scheme, host, port, status, rating, last_modified}).
 -record(query_token, {uuid, age, received}).

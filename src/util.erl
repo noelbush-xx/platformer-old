@@ -3,7 +3,7 @@
 %% @doc miscellaneous utilities.
 -module(util).
 
--export([get_param/2, md5/1, shuffle/1]).
+-export([get_param/1, get_param/2, md5/1, now_int/0, shuffle/1]).
 
 %% From http://rosettacode.org/wiki/MD5#Erlang
 md5(S) ->
@@ -14,10 +14,10 @@ md5(S) ->
 %% From http://www.trapexit.org/RandomShuffle
 shuffle(List) ->
     %% Determine the log n portion then randomize the list.
+    random:seed(now()),
     randomize(round(math:log(length(List)) + 0.5), List).
 
 randomize(1, List) ->
-    random:seed(now()),
     randomize(List);
 randomize(T, List) ->
     lists:foldl(fun(_E, Acc) ->
@@ -31,6 +31,12 @@ randomize(List) ->
     {_, D1} = lists:unzip(lists:keysort(1, D)), 
     D1.
 
+get_param(Par) ->
+    get_param(Par, undefined).
 get_param(Par, Default) ->
-    case application:get_env(Par) of undefined -> Default; {ok, Val} -> Val end.
-            
+    case application:get_env(platformer, Par) of undefined -> Default; {ok, Val} -> Val end.
+
+%% erlang's "now()" as an integer.
+now_int() ->
+    {Int, _} = string:to_integer(lists:concat(tuple_to_list(now()))),
+    Int.

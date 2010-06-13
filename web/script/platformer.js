@@ -14,19 +14,28 @@
 
    Platformer.fn = Platformer.prototype = {
 
+     /* Seed servers -- should be generally guaranteed to be always available. */
+     seed_servers: [ {address: 'http://0.0.0.0:8000' } ],
+
      /* The current userid. */
      userid: undefined,
 
      /* A list of known servers. */
-     servers: [ 'http://0.0.0.0:8000',
-                'http://0.0.0.0:8001' ],
+     servers: [],
 
      /* An array used in picking the next server (see _nextServer()). */
      unused_servers: [],
 
+     /* To be called when creating the Platformer object. */
      init: function () {
        this.userid = localStorage.getItem('active_userid');
+       this.servers = localStorage.getItem('known_servers');
+     },
+
+     /* To be called after the Platformer object is created and the page is ready. */
+     connect: function () {
        this.updateUserids();
+       this.updateKnownServers();
      },
 
      /*
@@ -44,7 +53,7 @@
        localStorage.removeItem('active_userid');
        this.userid = undefined;
        this.updateUserids();
-       this._showMessage('Cleared.');
+       this._showMessage('Cleared all stored userids.');
      },
 
      /* Delete the current userid. */
@@ -56,22 +65,26 @@
                      [204],
                      {type: 'DELETE',
                       success: function (data, textStatus, xhr) {
-                        status = Platformer._showStatus(xhr, textStatus);
-                        switch (status) {
+                        Platformer._showStatus(xhr, textStatus);
+                        switch (xhr.status) {
                         case 204:
-                          var ids = this._loadUserids();
-                          var index = $.inArray(this.userid, ids);
+                          Platformer.log('Successfully deleted.');
+                          var ids = pf._loadUserids();
+                          var index = $.inArray(pf.userid, ids);
                           if (index != -1) {
                             ids.splice(index, 1);
                           }
 
                           // Select the first userid in the remaining list.
-                          this._setUserid(ids[0]);
+                          pf._setUserid(ids[0]);
 
                           // Save and update.
-                          this._saveUserids(ids);
-                          this.updateUserids();
+                          pf._saveUserids(ids);
+                          pf.updateUserids();
                           break;
+
+                        default:
+                          Platformer.log('Success uncertain.');
                         }
                       }
                      });
@@ -86,9 +99,12 @@
                       dataType: 'json',
                       success: Platformer._showStatus,
                       success: function (data, textStatus, xhr) {
-                        status = Platformer._showStatus(xhr, textStatus);
-                        if (status == 201) {
+                        Platformer._showStatus(xhr, textStatus);
+                        switch (xhr.status) {
+                        case 201:
                           pf.updateUserids(data.userid);
+                          Platformer.log('Successfully retrieved new userid.');
+                          break;
                         }
                       }
                      });
@@ -96,7 +112,7 @@
 
      /* Append a message to the log element. */
      log: function(message) {
-       $('#log').append('<p>' + message + '</p>');
+       $('#log').append('<p>' + message + '</p>').scrollTop($('#log').attr('scrollHeight'));
      },
 
      /* Set the active userid. */
@@ -114,6 +130,19 @@
                     {type: 'HEAD',
                      success: function (data, textStatus, xhr) {
                        Platformer._showStatus(xhr, textStatus);
+                       switch (xhr.status) {
+                       case 200:
+                         Platformer.log('Userid exists.');
+                         break;
+                       }
+                     },
+                     error: function (xhr, textStatus, error) {
+                       Platformer._showStatus(xhr, textStatus);
+                       switch (xhr.status) {
+                       case 410:
+                         Platformer.log('Userid has been deleted.');
+                         break;
+                       }
                      },
                      beforeSend: function (xhr) {
                        xhr.setRequestHeader("X-Platformer-Query-Token", Math.uuid());
@@ -123,7 +152,29 @@
      },
 
      // Items (select, buttons) to hide when there's no userid selected.
-     _hideItems: ['#choose-userid', '#delete-userid', '#clear-userids', '#test-exists'],
+     _hideItems: ['#active-userid', '#delete-userid', '#clear-userids', '#test-exists'],
+
+     /* Update the list of known servers. */
+     updateKnownServers: function () {
+       var pf = this;
+       this._request('/server/list',
+                     [200],
+                     {type: 'GET',
+                      dataType: 'json',
+                      success: function (data, textStatus, xhr) {
+                        Platformer._mergeArrays(pf.servers, data.servers, "address");
+                        Platformer.log('Got ' + data.servers.length + ' server(s).');
+                      }
+                     });
+
+       // Now show the status of known servers.
+       $('#known-servers').html('<ul></ul>');
+       var pf = this;
+       $.each(this.servers, function (index, server) {
+                status = pf._pingServer(server);
+                $('#known-servers ul').append('<li class="' + status + '">' + server.address + '</li>');
+              });
+     },
 
      /*
       * Update the list of userids, selecting the active one.
@@ -173,9 +224,19 @@
      _nextServer: function (avoid) {
        var unused_count = this.unused_servers.length;
 
+       // If no servers are known, use the seeds.
+       if (!this.servers || this.servers.length == 0) {
+         this.log('No servers known; using seeds.');
+         if (this.seed_servers.length == 0) {
+           this.log('No seed servers configured; cannot continue.');
+           throw('No seed servers configured.');
+         }
+         this.servers = this.seed_servers.slice(0);  // .slice(0) returns a copy
+       }
+
        // If all servers have been used, refill the unused array.
        if (unused_count == 0) {
-         this.unused_servers = this.servers.slice(0);
+         this.unused_servers = this.servers.slice(0);  // .slice(0) returns a copy
          unused_count = this.unused_servers.length;
        }
 
@@ -194,8 +255,24 @@
        return server;
      },
 
+     /* Attempt to contact the given server.  Return "ok" or "unavailable" depending on status.*/
+     _pingServer: function (server) {
+       var status = "unavailable";
+       $.ajax({url: server.address + '/',
+               async: false,
+               timeout: 200,
+               type: 'OPTIONS',
+               success: function (data, textStatus, xhr) {
+                 if (xhr && xhr.status && typeof xhr.status == "number" && xhr.status == 200) {
+                   status = "available";
+                 }
+               }
+              });
+       return status;
+     },
+
      /* Apply a given ajax request to the next server (trying additional servers if one fails). */
-     _request: function(suffix, successCode, ajaxParams, triedServers) {
+     _request: function (suffix, successCode, ajaxParams, triedServers) {
        var server = this._nextServer(triedServers);
 
        // Save the original complete function.
@@ -212,13 +289,13 @@
        triedServers = (triedServers == undefined ? [] : triedServers);
        triedServers.push(server);
 
-       ajaxParams.url = server + suffix;
+       ajaxParams.url = server.address + suffix;
        Platformer.log('Trying ' + ajaxParams.type + ' request to ' + ajaxParams.url);
 
        var pf = this;
 
        // jQuery does not call error() all the time we want it to, and sometimes calls complete() too many times.
-       ajaxParams.complete = function (xhr, textStatus, error) {
+       ajaxParams.complete = function (xhr, textStatus) {
          if ((xhr == undefined || xhr.status === 0) && !ajaxParams.errorHandled && !ajaxParams.noServersReachable) {
            ajaxParams.errorHandled = true;
            Platformer.log('Request did not succeed.');
@@ -257,6 +334,47 @@
        return ids;
      },
 
+     /*
+      * Merge two arrays, optionally avoiding duplicates.
+      * If dupeCriteria is undefined, just does the same thing as
+      * jQuery's $.merge().  But dupeCriterion can specify what to
+      * compare in the two arrays, as follows:
+      * - a value of true says to avoid copying absolute duplicates
+      * - a value of "key_name" says to avoid copying objects where "key_name" has the same value
+      */
+     _mergeArrays: function (array0, array1, dupeCriterion) {
+       if (dupeCriterion == undefined) {
+         return $.merge(array0, array1);
+       }
+       if (dupeCriterion === true) {
+         $.each(array1, function (index1, value1) {
+                  if ($.inArray(value1, array0) === -1) {
+                    array0.push(value1);
+                  }
+                });
+       }
+       else if (typeof dupeCriterion == "string") {
+         $.each(array1, function (index1, value1) {
+                  if (!$.isPlainObject(value1)) {
+                    array0.push(value1);
+                  }
+                  else {
+                    var found = false;
+                    $.each(array0, function (index0, value0) {
+                             if ($.isPlainObject(value0) && dupeCriterion in value0) {
+                               if (value0[dupeCriterion] === value1[dupeCriterion]) {
+                                 found = true;
+                               }
+                             }
+                           });
+                    if (!found) {
+                      array0.push(value1);
+                    }
+                  }
+                });
+       }
+     },
+
      /* Save the given array of userids to local storage. */
      _saveUserids: function (ids) {
        if (ids != null && ids.length > 0) {
@@ -289,5 +407,6 @@ $(document).ready(function () {
                       $.getScript('script/json2.js');
                     }
                     Platformer = new Platformer();
+                    Platformer.connect();
                   });
 

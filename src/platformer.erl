@@ -39,6 +39,7 @@ setup() ->
 %% @spec stop() -> ok
 %% @doc Stop the platformer server.
 stop() ->
+    log4erl:info("Shutting down."),
     Res = application:stop(platformer),
     application:stop(inets),
     application:stop(mnesia),

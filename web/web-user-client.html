@@ -9,23 +9,36 @@
   </head>
   <body>
     <h1>Platformer Javascript Web User Client</h1>
-    <div id="buttons">
-      <button id="new-userid" type="button" onclick="Platformer.getUserid();">New Userid</button>
-      <button id="delete-userid" type="button" onclick="Platformer.deleteUserid();">Delete This Userid</button>
-      <button id="clear-userids" type="button" onclick="Platformer.clearStoredUserids();">Clear All Userids</button>
-      <button id="test-exists" type="button" onclick="Platformer.testUseridExists();">Test Exists</button>
+    <table id="users-and-servers">
+      <tr>
+        <td id="userids">
+          <label for="active-userid">Active userid:</label>
+          <select id="active-userid" onchange="Platformer.setActiveUserid(this.value);">
+          </select>
+          <div id="userid-buttons">
+            <button id="new-userid" type="button" onclick="Platformer.getUserid();">New Userid</button>
+            <button id="delete-userid" type="button" onclick="Platformer.deleteUserid();">Delete This Userid</button>
+            <button id="clear-userids" type="button" onclick="Platformer.clearStoredUserids();">Clear All Userids</button>
+            <button id="test-exists" type="button" onclick="Platformer.testUseridExists();">Test Exists</button>
+          </div>
+        </td>
+        <td id="servers">
+          <div id="server-buttons">
+            <button id="update-known-servers" type="button" onclick="Platformer.updateKnownServers();">Update Known Servers</button>
+          </div>
+          <label>Known Servers:</label>
+          <output id="known-servers"></output>
+        </td>
+      </tr>
+    </table>
+    <div id="messages">
+      <output><!-- --></output>
     </div>
-    <section id="userid">
-      <div id="choose-userid">
-        <label for="active-userid">Active userid:</label>
-        <select id="active-userid" onchange="Platformer.setActiveUserid(this.value);">
-        </select>
-      </div>
-    </section>
-    <output id="messages"></output>
     <div id="logging">
       <button id="clear-log" onclick="Platformer.clearLog();">Clear Log</button>
-      <output id="log"</output>
+      <div id="log">
+        <output><!-- --></output>
+      </div>
     </div>
   </body>
 </html>

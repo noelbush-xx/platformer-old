@@ -2,7 +2,7 @@
 %% @copyright 2010 Noel Bush.
 %% @doc A very simple resource to respond to pings.
 -module(ping_resource).
--export([init/1, allowed_methods/2]).
+-export([init/1, allowed_methods/2, options/2]).
 
 -include_lib("webmachine/include/webmachine.hrl").
 
@@ -12,3 +12,6 @@ init(Config) ->
 
 allowed_methods(ReqData, Context) ->
     {['OPTIONS'], ReqData, Context}.
+
+options(ReqData, Context) ->
+    {[{"Access-Control-Allow-Origin", "*"}, {"Access-Control-Allow-Methods", "OPTIONS"}], ReqData, Context}.

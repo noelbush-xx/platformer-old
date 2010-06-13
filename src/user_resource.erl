@@ -24,6 +24,8 @@
          post_is_create/2, previously_existed/2,
          resource_exists/2]).
 
+-import(server_resource, [get_address/1]).
+
 -include_lib("webmachine/include/webmachine.hrl").
 -include_lib("stdlib/include/qlc.hrl").
 
@@ -130,7 +132,7 @@ resource_exists(ReqData, Context) ->
 delete_userid(Id) ->
     F = fun() ->
                 [User] = mnesia:read(user, Id, write),
-                mnesia:write(User#user{status=deleted, last_modified=now()})
+                mnesia:write(User#user{status=deleted, last_modified=util:now_int()})
         end,
     case mnesia:transaction(F) of
         {atomic, _} ->
@@ -142,7 +144,7 @@ delete_userid(Id) ->
 %% @spec new_user() -> {Id, Path}
 new_user() ->
     Id = string:concat("platformer_user_", uuid:to_string(uuid:v4())),
-    case platformer_db:write(#user{id=Id, status=active, last_modified=now()}) of
+    case platformer_db:write(#user{id=Id, status=active, last_modified=util:now_int()}) of
         {atomic, ok} ->
             {Id, string:concat("/userid/", Id)};
         {aborted, Error} ->
@@ -185,7 +187,7 @@ user_exists({Id, CheckOtherServers}) ->
     
 user_exists(Id, [Server|Servers]) ->
     %% TODO: Do not check self!
-    case httpc:request(head, {lists:concat([Server#server.address, "/user/", Id]),
+    case httpc:request(head, {lists:concat([get_address(Server), "/user/", Id]),
                               [{"X-Platformer-Node", get_node_address()}]}, [], []) of
         {ok, {{_, Status, _}, _, _}} ->
             case Status of

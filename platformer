@@ -1,16 +1,18 @@
 #!/bin/bash
 COMMAND="/usr/bin/erl"
+CODE_PATH="$PWD/ebin $PWD/deps/webmachine/ebin $PWD/deps/webmachine/deps/mochiweb/ebin $PWD/deps/log4erl/ebin"
+BASE_DIR=$(cd `dirname $0` && pwd)
+PRIV_DIR="$BASE_DIR/priv"
+
 USAGE="usage: $0 [options] {start|stop|restart|status}"
 
 . /lib/lsb/init-functions || (echo "Missing LSB init-functions; this script won't work right." && exit 1)
-
-BASE_DIR=$(cd `dirname $0` && pwd)
-PRIV_DIR="$BASE_DIR/priv"
 
 # Defaults
 PORT=8000
 CONFIG="app"
 
+# Get options and command
 set -- `getopt --options p:rBc:h --longoptions port:,reset-db,background,config:,help --unquoted -- "$@"`
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -41,24 +43,30 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+# Name the node
 if [ -n "$PORTSPEC" ]; then
     NODENAME="platformer_$PORT"
 else
     NODENAME="platformer"
 fi
 
+# Construct any plain arguments to erl
 PLAIN_ARGS="$RESET_DB"
 if [ -n "$PLAIN_ARGS" ]; then
     PLAIN_ARGS="-- $PLAIN_ARGS"
 fi
 
+# Path to pid file
 PIDFILE=$PRIV_DIR/$NODENAME.pid
 
-ARGUMENTS="-pa $PWD/ebin $PWD/deps/webmachine/ebin $PWD/deps/webmachine/deps/mochiweb/ebin -boot start_sasl -s reloader -s platformer -sname $NODENAME -config $PRIV_DIR/$CONFIG $PORTSPEC $DETACHED $PLAIN_ARGS"
+# Arguments to erl
+ARGUMENTS="-pa $CODE_PATH -boot start_sasl -s reloader -s platformer -sname $NODENAME -config $PRIV_DIR/$CONFIG $PORTSPEC $DETACHED $PLAIN_ARGS"
 
+# Start and stop commands using start-stop-daemon
 DAEMON_START_CMD="start-stop-daemon --start --quiet --oknodo --exec $COMMAND --chdir $BASE_DIR --pidfile $PIDFILE -- $ARGUMENTS"
 DAEMON_STOP_CMD="start-stop-daemon --stop --quiet --retry 5 --oknodo --pidfile $PIDFILE"
 
+# Process command
 case "$@" in
     start)
         if [ -n $BACKGROUND ]; then
