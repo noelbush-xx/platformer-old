@@ -1,0 +1,6 @@
+[submodule "src/external/jsonerl"]
+	path = src/external/jsonerl
+	url = http://github.com/lambder/jsonerl.git
+[submodule "src/external/erlang-uuid"]
+	path = src/external/erlang-uuid
+	url = git@github.com:noelbush/erlang-uuid.git
