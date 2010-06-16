@@ -1,3 +1,3 @@
--record(user, {id, status, last_modified}).
--record(server, {hash, scheme, host, port, status, rating, last_modified}).
+-record(pfuser, {id, status, last_modified}).
+-record(pfnode, {hash, scheme, host, port, status, rating, last_modified}).
 -record(query_token, {uuid, age, received}).

@@ -1,6 +1,6 @@
 %% @author Noel Bush <noel@platformer.org>
 %% @copyright 2010 Noel Bush.
-%% @doc Server resource.
+%% @doc Node resource.
 %%
 %% This module is responsible for contacting other Platformer nodes.
 %%
@@ -13,42 +13,43 @@
 
 -include("platformer.hrl").
 
--import(server_resource, [get_address/1, new_servers/1]).
-
 %% Announce this node to other known nodes.
 announce_self() ->
-    Json = list_to_binary(?record_to_json(server, #server{scheme=util:get_param(scheme),
+    Json = list_to_binary(?record_to_json(pfnode, #pfnode{scheme=util:get_param(scheme),
                                            host=list_to_binary(util:get_param(ip)), port=util:get_param(port)})),
-    announce_self(Json, server_resource:get_list()).
+    Nodes = pfnode:get_list(),
+    log4erl:info("Announcing myself to ~B peer node(s).", [length(Nodes)]),
+    io:format("Nodes: ~p~n", [Nodes]),
+    announce_self(Json, Nodes).
 
-announce_self(Json, [Server|Rest])->
-    Address = get_address(Server),
-    log4erl:info("Announcing myself to server ~p.", [Address]),
-    httpc:request(post, {Address ++ "/server", [], "text/javascript", Json}, [], []),
+announce_self(Json, [Node|Rest])->
+    Address = pfnode:get_address(Node),
+    log4erl:info("Announcing myself to node ~p.", [Address]),
+    httpc:request(post, {Address ++ "/node", [], "text/javascript", Json}, [], []),
     announce_self(Json, Rest);
 
 announce_self(_Json, [])->
-    log4erl:info("No more servers to whom to announce myself."),
+    log4erl:info("No more nodes to whom to announce myself."),
     ok.
 
-%% Ask other nodes for their server lists.  We check with
-%% the 25% least recently contacted servers.
+%% Ask other nodes for their node lists.  We check with
+%% the 25% least recently contacted nodes.
 seek_peers() ->
-    Servers = lists:sort(fun(A, B) -> A#server.last_modified < B#server.last_modified end, server_resource:get_list()),
-    Sublist = lists:sublist(Servers, trunc(length(Servers) * 0.25 + 1)),
+    Nodes = lists:sort(fun(A, B) -> A#pfnode.last_modified < B#pfnode.last_modified end, pfnode:get_list()),
+    Sublist = lists:sublist(Nodes, trunc(length(Nodes) * 0.25 + 1)),
     seek_peers(Sublist).
 
-seek_peers([Server|Rest]) ->
-    Address = get_address(Server),
-    log4erl:info("Asking server ~p for its server list.", [Address]),
-    case httpc:request(Address ++ "/server/list") of
+seek_peers([Node|Rest]) ->
+    Address = pfnode:get_address(Node),
+    log4erl:info("Asking node ~p for its node list.", [Address]),
+    case httpc:request(Address ++ "/node/list") of
         {ok, {{_, 200, _}, _, Body}} ->
-            {{<<"servers">>, Peers}} = jsonerl:decode(Body),
-            new_servers(Peers);
+            {{<<"nodes">>, Peers}} = jsonerl:decode(Body),
+            pfnode:create_from_list(Peers);
         _ ->
-            log4erl:info("Could not retrieve server list from ~p.~n", [Address])
+            log4erl:info("Could not retrieve node list from ~p.~n", [Address])
     end,
     seek_peers(Rest);
 seek_peers([]) ->
-    log4erl:info("No more servers to query for peers."),
+    log4erl:info("No more nodes to query for peers."),
     ok.

@@ -7,34 +7,34 @@
 button:first-child {
   margin-left: 0;
 }
-#users-and-servers * label {
+#users-and-nodes * label {
   font-weight: bold;
 }
-#users-and-servers {
+#users-and-nodes {
   margin: 1em 0 0 0;
 }
-#users-and-servers td {
+#users-and-nodes td {
   padding: 0 2em 0 0;
   vertical-align: top;
 }
-#users-and-servers td:last-child {
+#users-and-nodes td:last-child {
   padding-right: 0;
 }
-#known-servers {
+#known-nodes {
   width: 10em;
 }
-#known-servers ul {
+#known-nodes ul {
   list-style-type: none;
   padding-left: 0;
   margin: 0;
 }
-#known-servers li {
+#known-nodes li {
   font-family: monospace;
 }
-.error, #servers li.unavailable {
+.error, #nodes li.unavailable {
   color: red;
 }
-.info, #servers li.available {
+.info, #nodes li.available {
   color: green;
 }
 #messages {

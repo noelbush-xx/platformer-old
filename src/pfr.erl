@@ -34,9 +34,9 @@ postprocess_rd(ReqData) ->
     case wrq:get_req_header("X-Platformer-Node", ReqData) of
         undefined -> true;
         Address ->
-            case server_resource:server_exists(util:md5(Address)) of {false, _} ->
-                    server_resource:new_server(Address);
-                _ -> true
+            case pfnode:get(util:md5(Address)) of
+                not_found -> pfnode:create(Address);
+                _Server -> true
             end
     end,
     wrq:set_resp_header("Access-Control-Allow-Origin", "*", ReqData).

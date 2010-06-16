@@ -14,28 +14,28 @@
 
    Platformer.fn = Platformer.prototype = {
 
-     /* Seed servers -- should be generally guaranteed to be always available. */
-     seed_servers: [ {address: 'http://0.0.0.0:8000' } ],
+     /* Seed nodes -- should be generally guaranteed to be always available. */
+     seed_nodes: [ {address: 'http://0.0.0.0:8000' } ],
 
      /* The current userid. */
      userid: undefined,
 
-     /* A list of known servers. */
-     servers: [],
+     /* A list of known nodes. */
+     nodes: [],
 
-     /* An array used in picking the next server (see _nextServer()). */
-     unused_servers: [],
+     /* An array used in picking the next node (see _nextNode()). */
+     unused_nodes: [],
 
      /* To be called when creating the Platformer object. */
      init: function () {
        this.userid = localStorage.getItem('active_userid');
-       this.servers = localStorage.getItem('known_servers');
+       this.nodes = localStorage.getItem('known_nodes');
      },
 
      /* To be called after the Platformer object is created and the page is ready. */
      connect: function () {
        this.updateUserids();
-       this.updateKnownServers();
+       this.updateKnownNodes();
      },
 
      /*
@@ -90,7 +90,7 @@
                      });
      },
 
-     /* Get a new userid from a platformer server. */
+     /* Get a new userid from a platformer node. */
      getUserid: function () {
        var pf = this;
        this._request('/user',
@@ -154,26 +154,33 @@
      // Items (select, buttons) to hide when there's no userid selected.
      _hideItems: ['#active-userid', '#delete-userid', '#clear-userids', '#test-exists'],
 
-     /* Update the list of known servers. */
-     updateKnownServers: function () {
+     /* Update the list of known nodes. */
+     updateKnownNodes: function () {
        var pf = this;
-       this._request('/server/list',
+       this._request('/node/list',
                      [200],
                      {type: 'GET',
                       dataType: 'json',
                       success: function (data, textStatus, xhr) {
-                        Platformer._mergeArrays(pf.servers, data.servers, "address");
-                        Platformer.log('Got ' + data.servers.length + ' server(s).');
+                        if (data == null) {
+                          Platformer.log('Received null result.');
+                        }
+                        else {
+                          data.nodes = $.map(data.nodes, function (element, index) {
+                                                 return {address: element.scheme + "://" + element.host + ":" + element.port};
+                                               });
+                          Platformer._mergeArrays(pf.nodes, data.nodes, "address");
+                          Platformer.log('Got ' + data.nodes.length + ' node(s).');
+                          // Now show the status of known nodes.
+                          $('#known-nodes').html('<ul></ul>');
+                          $.each(pf.nodes, function (index, node) {
+                                   status = pf._pingNode(node);
+                                   $('#known-nodes ul').append('<li class="' + status + '">' + node.address + '</li>');
+                                 });
+                        }
                       }
                      });
 
-       // Now show the status of known servers.
-       $('#known-servers').html('<ul></ul>');
-       var pf = this;
-       $.each(this.servers, function (index, server) {
-                status = pf._pingServer(server);
-                $('#known-servers ul').append('<li class="' + status + '">' + server.address + '</li>');
-              });
      },
 
      /*
@@ -216,49 +223,49 @@
       */
 
      /*
-      * Choose the next server to be used.
+      * Choose the next node to be used.
       * The optional avoid parameter can specify that we avoid
-      * returning the specified servers, returning undefined
+      * returning the specified nodes, returning undefined
       * if there are no remaining choices.
       */
-     _nextServer: function (avoid) {
-       var unused_count = this.unused_servers.length;
+     _nextNode: function (avoid) {
+       var unused_count = this.unused_nodes.length;
 
-       // If no servers are known, use the seeds.
-       if (!this.servers || this.servers.length == 0) {
-         this.log('No servers known; using seeds.');
-         if (this.seed_servers.length == 0) {
-           this.log('No seed servers configured; cannot continue.');
-           throw('No seed servers configured.');
+       // If no nodes are known, use the seeds.
+       if (!this.nodes || this.nodes.length == 0) {
+         this.log('No nodes known; using seeds.');
+         if (this.seed_nodes.length == 0) {
+           this.log('No seed nodes configured; cannot continue.');
+           throw('No seed nodes configured.');
          }
-         this.servers = this.seed_servers.slice(0);  // .slice(0) returns a copy
+         this.nodes = this.seed_nodes.slice(0);  // .slice(0) returns a copy
        }
 
-       // If all servers have been used, refill the unused array.
+       // If all nodes have been used, refill the unused array.
        if (unused_count == 0) {
-         this.unused_servers = this.servers.slice(0);  // .slice(0) returns a copy
-         unused_count = this.unused_servers.length;
+         this.unused_nodes = this.nodes.slice(0);  // .slice(0) returns a copy
+         unused_count = this.unused_nodes.length;
        }
 
-       // Choose a server randomly and remove it from the unused array.
+       // Choose a node randomly and remove it from the unused array.
        var choice = Math.floor(Math.random() * unused_count);
-       server = this.unused_servers[choice];
-       this.unused_servers.splice(choice, 1);
+       node = this.unused_nodes[choice];
+       this.unused_nodes.splice(choice, 1);
 
-       // Return the url for the chosen server (avoiding the given one if necessary).
-       if (avoid != undefined && ($.inArray(server, avoid) > -1)) {
-         if (this.unused_servers.length > 0) {
-           return this._nextServer(avoid);
+       // Return the url for the chosen node (avoiding the given one if necessary).
+       if (avoid != undefined && ($.inArray(node, avoid) > -1)) {
+         if (this.unused_nodes.length > 0) {
+           return this._nextNode(avoid);
          }
          return undefined;
        }
-       return server;
+       return node;
      },
 
-     /* Attempt to contact the given server.  Return "ok" or "unavailable" depending on status.*/
-     _pingServer: function (server) {
+     /* Attempt to contact the given node.  Return "ok" or "unavailable" depending on status.*/
+     _pingNode: function (node) {
        var status = "unavailable";
-       $.ajax({url: server.address + '/',
+       $.ajax({url: node.address + '/',
                async: false,
                timeout: 200,
                type: 'OPTIONS',
@@ -271,35 +278,35 @@
        return status;
      },
 
-     /* Apply a given ajax request to the next server (trying additional servers if one fails). */
-     _request: function (suffix, successCode, ajaxParams, triedServers) {
-       var server = this._nextServer(triedServers);
+     /* Apply a given ajax request to the next node (trying additional nodes if one fails). */
+     _request: function (suffix, successCode, ajaxParams, triedNodes) {
+       var node = this._nextNode(triedNodes);
 
        // Save the original complete function.
        ajaxParams.originalComplete = (ajaxParams.originalComplete ? ajaxParams.originalComplete : ajaxParams.complete);
 
-       // If we've tried all servers and still nothing, call the original error function and give up.
-       if (server == undefined) {
-         Platformer._showMessage('Could not reach any servers.', 'error');
+       // If we've tried all nodes and still nothing, call the original error function and give up.
+       if (node == undefined) {
+         Platformer._showMessage('Could not reach any nodes.', 'error');
          ajaxParams.originalComplete();
-         ajaxParams.noServersReachable = true;
+         ajaxParams.noNodesReachable = true;
          return;
        }
 
-       triedServers = (triedServers == undefined ? [] : triedServers);
-       triedServers.push(server);
+       triedNodes = (triedNodes == undefined ? [] : triedNodes);
+       triedNodes.push(node);
 
-       ajaxParams.url = server.address + suffix;
+       ajaxParams.url = node.address + suffix;
        Platformer.log('Trying ' + ajaxParams.type + ' request to ' + ajaxParams.url);
 
        var pf = this;
 
        // jQuery does not call error() all the time we want it to, and sometimes calls complete() too many times.
        ajaxParams.complete = function (xhr, textStatus) {
-         if ((xhr == undefined || xhr.status === 0) && !ajaxParams.errorHandled && !ajaxParams.noServersReachable) {
+         if ((xhr == undefined || xhr.status === 0) && !ajaxParams.errorHandled && !ajaxParams.noNodesReachable) {
            ajaxParams.errorHandled = true;
            Platformer.log('Request did not succeed.');
-           pf._request(suffix, successCode, ajaxParams, triedServers);
+           pf._request(suffix, successCode, ajaxParams, triedNodes);
          }
        };
 

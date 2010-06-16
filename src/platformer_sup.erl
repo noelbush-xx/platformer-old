@@ -57,9 +57,14 @@ init([]) ->
     file:write_file(PidFile, os:getpid()),
 
     %% Configure the logger to include the node name.
-    NodeName = atom_to_list(node()),
-    case log4erl:change_format(file, "[" ++ string:substr(NodeName, 1, string:chr(NodeName, $@) - 1)  ++ "][%L] %j %t %l%n") of
-        {error, E0} -> io:format("Error configuring logger: ~p~n", [E0]);
+    NodeFullName = atom_to_list(node()),
+    NodeShortName = string:substr(NodeFullName, 1, string:chr(NodeFullName, $@) - 1),
+    case log4erl:change_format(file, "[" ++ NodeShortName  ++ "][%L] %j %t %l%n") of
+        {error, E0} -> io:format("*** Error changing logger format: ~p~n", [E0]);
+        ok -> ok
+    end,
+    case log4erl:change_filename(file, NodeShortName) of
+        {error, E1} -> io:format("*** Error changing logger filename to ~p. (~p)~n", [NodeShortName, E1]);
         ok -> ok
     end,
 
@@ -67,7 +72,7 @@ init([]) ->
     Dispatch =
         case file:consult(DispatchPath) of
             {ok, File} -> File;
-            {error, E1} -> log4erl:error("Error reading dispatch file at " ++ DispatchPath, E1)
+            {error, E2} -> log4erl:error("Error reading dispatch file at " ++ DispatchPath, E2)
         end,
 
     %% Prepare the configuration for webmachine/mochiweb.
@@ -86,7 +91,7 @@ init([]) ->
     %% Reset the db if instructed to; in any case, check that pre-supplied servers are in db
     case lists:member("reset-db", init:get_plain_arguments()) of
         true -> platformer_db:reset();
-        false -> server_resource:load_preconfigured()
+        false -> pfnode:load_preconfigured()
     end,
 
     %% Announce self to other servers, seek peers, and set up timed announcements and peer searches.

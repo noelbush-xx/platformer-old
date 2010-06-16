@@ -10,10 +10,13 @@
              platformer_sup,
              platformer_db,
              platformer_error_handler,
-             %% Webmachine Resources
+             %% Webmachine resources
              ping_resource,
+             node_resource,
              user_resource,
-             server_resource,
+             %% Other application modules
+             pfnode,
+             pfuser,
              %% Utility modules
              liaison,
              pfr,

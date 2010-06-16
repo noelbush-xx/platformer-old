@@ -4,3 +4,6 @@
 [submodule "src/external/erlang-uuid"]
 	path = src/external/erlang-uuid
 	url = git@github.com:noelbush/erlang-uuid.git
+[submodule "deps/log4erl"]
+	path = deps/log4erl
+	url = git@github.com:noelbush/log4erl.git
