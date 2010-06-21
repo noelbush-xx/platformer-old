@@ -2,6 +2,7 @@
 Mnesia*
 erl_crash.dump
 ebin/*
+priv/db/*
 priv/log/*
-priv/*.pid
+priv/pid/*
 src/TAGS

@@ -34,7 +34,7 @@
 %% Webmachine functions
 
 init(Config) ->
-    {{trace, "/tmp"}, #context{config=Config}}.  %% debugging code
+    {{trace, "/tmp/platformer/" ++ atom_to_list(node())}, #context{config=Config}}.  %% debugging code
     %%{ok, #context{config=Config}}.             %% regular code
 
 allow_missing_post(ReqData, Context) ->

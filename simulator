@@ -1,0 +1,189 @@
+#!/usr/bin/env escript
+%% -*- erlang -*-
+%%! -sname simulator -rsh ssh -pa deps/getopt/ebin ebin deps/webmachine/ebin deps/webmachine/deps/mochiweb/ebin deps/log4erl/ebin -setcookie simulator
+
+-import(getopt).
+
+main(Args) ->
+    OptSpecList = option_spec_list(),
+    case getopt:parse(OptSpecList, Args) of
+        {ok, {Options, _NonOptArgs}} ->
+            case proplists:is_defined(help, Options) of
+               true -> usage(OptSpecList);
+               false ->
+                    case validate(Options) of
+                        {ok, OptValues} -> start(OptValues);
+                        {error, Problem, OptName, OptValue} ->
+                            io:format("~p is ~s for ~s~n", [OptValue, Problem, OptName]),
+                            usage(OptSpecList)
+                    end
+            end;
+        {error, Error} ->
+            case Error of
+                {invalid_option, Data} ->
+                    io:format("~p is not a valid option.~n", [Data]);
+                {invalid_option_arg, Data} ->
+                    io:format("invalid argument for option: ~p~n", [Data]);
+                {missing_option_arg, Data} ->
+                    io:format("~p requires an argument.~n", [Data])
+            end,
+            usage(OptSpecList)
+    end.
+
+validate(Options) ->
+    % Can this be shortened somehow?
+    Chaos = proplists:get_value(chaos, Options),
+    MinNodes = proplists:get_value(min_nodes, Options),
+    MaxNodes = proplists:get_value(max_nodes, Options),
+    LowPort = proplists:get_value(low_port, Options),
+    HighPort = proplists:get_value(high_port, Options),
+    MinWait = proplists:get_value(min_wait, Options),
+    MaxWait = proplists:get_value(max_wait, Options),
+
+    SeedString = proplists:get_value(stable_seeds, Options),
+    StableSeeds = try [list_to_integer(X) || X <- string:tokens(SeedString, ", ")]
+                  catch error:_ -> error end,
+    if
+        Chaos < 0; Chaos > 100 -> {error, "out of range", chaos, Chaos};
+        MaxNodes < MinNodes -> {error, "less than min_nodes", max_nodes, MaxNodes};
+        HighPort < LowPort -> {error, "lower than low_port", high_port, HighPort};
+        MaxWait < MinWait -> {error, "less than min_wait", max_wait, MaxWait};
+        StableSeeds =:= error -> {error, "not a valid integer list", stable_seeds, SeedString}; %TODO: check that ports are within range
+        true ->
+            {ok, {Chaos / 100, MinNodes, MaxNodes, LowPort, HighPort, MinWait, MaxWait, StableSeeds}}
+    end.
+    
+start({Chaos, MinNodes, MaxNodes, LowPort, HighPort, MinWait, MaxWait, StableSeeds} = OptValues) ->
+    io:format("=====================================~n"),
+    io:format("Starting Platformer network simulator~n"),
+    io:format("  Settings:~n"),
+    io:format("  * node availability: ~B-~B nodes~n", [MinNodes, MaxNodes]),
+    io:format("  * port range: ~B-~B~n", [LowPort, HighPort]),
+    io:format("  * event intervals: ~B-~B seconds~n", [MinWait, MaxWait]),
+    io:format("  * stable seeds: ~p~n", [StableSeeds]),
+    io:format("  * chaos: ~B%~n~n", [round(Chaos * 100)]),
+    random:seed(now()),
+    io:format("[start stop wait]  ~s  { lag}~n", [string:copies(" ", HighPort - LowPort + 1)]),
+    loop(OptValues).
+
+loop(OptValues) -> loop(OptValues, []). 
+
+%% First run of the loop: start up the stable seeds.
+loop({_, _, _, LowPort, HighPort, _, _, StableSeeds} = OptValues, []) ->
+    io:format("[ ~4B ~4B ~4B] [~s]", [length(StableSeeds), 0, 0, status_string(lists:seq(LowPort, HighPort), StableSeeds, [], [], [])]),
+    statistics(wall_clock),
+    start_nodes(StableSeeds),
+    {_, Lag} = statistics(wall_clock),
+    io:format(" {~.2f}~n", [Lag / 1000]),
+    loop(OptValues, StableSeeds);
+
+loop({Chaos, MinNodes, MaxNodes, LowPort, HighPort, MinWait, MaxWait, StableSeeds} = OptValues, Running) ->
+    RunningCount = length(Running),
+    StartCount = lists:max([choice(MinNodes, MaxNodes, Chaos) - RunningCount, 0]),
+    StopCount = lists:max([RunningCount - choice(MinNodes, MaxNodes, Chaos), 0]),
+    Wait = choice(MinWait, MaxWait, Chaos),
+
+    AllPorts = lists:seq(LowPort, HighPort),
+    UsablePorts = lists:subtract(AllPorts, StableSeeds),
+    ToStart = choose(StartCount, lists:subtract(UsablePorts, Running)),
+    ToStop = choose(StopCount, lists:subtract(Running, StableSeeds)),
+
+    StatusString = status_string(AllPorts, ToStart, ToStop, Running, StableSeeds),
+    io:format("[ ~4B ~4B ~4B] [~s]", [StartCount, StopCount, Wait, StatusString]),
+    statistics(wall_clock),
+    start_nodes(ToStart),
+    stop_nodes(ToStop),
+    {_, Lag} = statistics(wall_clock),
+    io:format(" {~.2f}~n", [Lag / 1000]),
+    timer:sleep(lists:max([Wait * 1000 - Lag, 1])),
+    NewRunning = lists:subtract(lists:concat([ToStart, Running]), ToStop),
+    loop(OptValues, NewRunning).
+
+start_nodes(Ports) ->
+    {ok, Hostname} = inet:gethostname(),
+    start_nodes(Ports, list_to_atom(Hostname)).
+
+start_nodes([Port|Rest], Host) ->
+    NodeName = lists:concat(["platformer_", Port]),
+    slave:start(Host, NodeName, lists:concat(["-pa deps/getopt/ebin ebin deps/webmachine/ebin deps/webmachine/deps/mochiweb/ebin deps/log4erl/ebin",
+                                              " -boot start_sasl",
+                                              " -s reloader -s platformer",
+                                              " -mnesia dir '\"priv/db/Mnesia.", NodeName, "\"'",
+                                              " -config priv/platformer_node",
+                                              " -config priv/log-quiet",
+                                              " -platformer port ", Port,
+                                              " -detached",
+                                              " -setcookie simulator -- reset-db"])),
+    start_nodes(Rest, Host);
+
+start_nodes([], _) -> ok.
+
+stop_nodes(Ports) ->
+    {ok, Hostname} = inet:gethostname(),
+    stop_nodes(Ports, Hostname).
+
+stop_nodes([Port|Rest], Hostname) ->
+    slave:stop(list_to_atom(lists:concat(["platformer_", Port, "@", Hostname]))),
+    stop_nodes(Rest, Hostname);
+
+stop_nodes([], _) -> ok.
+
+choice(Min, Max, Chaos) ->
+    Avg = (Max + Min) / 2,
+    AdjMin = round(Avg - (Chaos * (Avg - Min))),
+    AdjMax = round(Avg + (Chaos * (Max - Avg))),
+    case AdjMax - AdjMin of
+        0 -> AdjMin; 
+        _ -> random:uniform(AdjMax - AdjMin) + AdjMin
+    end.
+
+choose(Count, List) -> choose(Count, List, []).
+
+choose(0, _, Acc)  -> Acc;
+choose(Count, List, Acc) ->
+    if
+        length(List) > 0 ->
+            Choice = lists:nth(random:uniform(length(List)), List),
+            choose(Count - 1, lists:delete(Choice, List), [Choice|Acc]);
+        length(List) =:= 0 -> choose(0, List, Acc)
+    end.
+
+status_string(AllPorts, ToStart, ToStop, Running, StableSeeds) -> status_string(AllPorts, ToStart, ToStop, Running, StableSeeds, []).
+
+status_string([Port|Rest], ToStart, ToStop, Running, StableSeeds, Acc) ->
+    status_string(Rest,
+                  ToStart,
+                  ToStop,
+                  Running,
+                  StableSeeds,
+                  case lists:member(Port, ToStop) of
+                      true -> ["x"|Acc]; 
+                      false -> case lists:member(Port, ToStart) of
+                                   true -> ["*"|Acc];
+                                   false -> case lists:member(Port, StableSeeds) of
+                                                true -> ["@"|Acc];
+                                                false -> case lists:member(Port, Running) of
+                                                             true -> ["."|Acc];
+                                                             false -> [" "|Acc]
+                                                         end
+                                            end
+                               end
+                  end);
+status_string([], _, _, _, _, Acc) ->
+    lists:reverse(Acc).
+
+usage(OptSpecList) ->
+    getopt:usage(OptSpecList, escript:script_name()).
+option_spec_list() ->
+    [
+     {min_nodes,    $n, "min",       {integer, 1},     "Minimum number of nodes to keep running [1]"},
+     {max_nodes,    $x, "max",       {integer, 100},   "Maximum number of nodes to have running [100]"},
+     {low_port,     $l, "low-port",  {integer, 8000},  "Lowest port number to use [8000]"},
+     {high_port,    $h, "high-port", {integer, 8150},  "Highest port number to use [8150]"},
+     {stable_seeds, $s, "stable",    {string, "8000"}, "Port(s) where a node should *always* be available (\"stable seeds\") [(comma-separated list) 8000]"},
+     {min_wait,     $i, "min-wait",  {integer, 1},     "Minimum seconds to wait between changes [1]"},
+     {max_wait,     $a, "max-wait",  {integer, 3600},  "Maximum seconds to wait between changes [3600]"},
+     {chaos,        $C, "chaos",     {integer, 50},    "Degree of chaos (from 0 to 100) [50]"},
+     {help,         $h, "help",      undefined,        "Print this help"}
+    ].
+        

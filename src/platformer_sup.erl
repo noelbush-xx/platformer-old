@@ -53,7 +53,7 @@ init([]) ->
     log4erl:conf(filename:join([PrivDir, "log4erl.conf"])),
 
     %% Write the pid to a file
-    PidFile = filename:join([PrivDir, lists:concat([string:sub_word(atom_to_list(node()), 1, $@), ".pid"])]),
+    PidFile = filename:join([PrivDir, "pid", lists:concat([string:sub_word(atom_to_list(node()), 1, $@), ".pid"])]),
     file:write_file(PidFile, os:getpid()),
 
     %% Configure the logger to include the node name.
@@ -69,11 +69,30 @@ init([]) ->
     end,
 
     %% Load the webmachine dispatch config.
-    Dispatch =
-        case file:consult(DispatchPath) of
-            {ok, File} -> File;
-            {error, E2} -> log4erl:error("Error reading dispatch file at " ++ DispatchPath, E2)
+    DispatchContent =
+        try file:consult(DispatchPath) of
+            {ok, Content} -> Content
+        catch error:E2 ->
+                log4erl:error("Error reading dispatch file at " ++ DispatchPath, E2),
+                exit("Could not read dispatch file.")
         end,
+
+    %% Special handling of the wmtrace directory path (the token
+    %% "%node%" will be replaced with the current node name, and the
+    %% directory will be created if it does not exist).
+    Dispatch = lists:map(fun({Path, wmtrace_resource, [{trace_dir, InitialTraceDir}]}) ->
+                                 {Path, wmtrace_resource, [{trace_dir, re:replace(InitialTraceDir, "%node%", atom_to_list(node()), [{return, list}])}]};
+                            (Term) -> Term
+                         end,
+                         DispatchContent),
+    TraceDir = proplists:get_value(trace_dir, lists:nth(3, tuple_to_list(lists:keyfind(wmtrace_resource, 2, Dispatch)))),
+    case filelib:ensure_dir(filename:join(TraceDir, "example")) of
+        ok -> ok;
+        {error, Reason} ->
+            log4erl:error("Could not find or create wmtrace directory ~s (Reason: ~s).~n", [TraceDir, Reason]),
+            exit("Invalid wmtrace directory specified. " ++ Reason)
+    end,
+    io:format("************ Did I ensure the existence of ~s?~n", [TraceDir]),
 
     %% Prepare the configuration for webmachine/mochiweb.
     WebConfig = [{ip, Ip},

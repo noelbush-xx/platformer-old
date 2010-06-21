@@ -1,3 +1,6 @@
+##
+# Start/stop multiple Platformer nodes at once
+#
 #!/bin/bash
 USAGE="usage: $0 [options] {start|stop|restart|status}"
 

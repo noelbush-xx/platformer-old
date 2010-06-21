@@ -7,7 +7,7 @@
 -include_lib("webmachine/include/webmachine.hrl").
 
 init(Config) ->
-    {{trace, "/tmp"}, Config}.  %% debugging code
+    {{trace, "/tmp/platformer/" ++ atom_to_list(node())}, Config}.  %% debugging code
     %%{ok, Config}.             %% regular code
 
 allowed_methods(ReqData, Context) ->

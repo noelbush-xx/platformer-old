@@ -19,7 +19,6 @@ announce_self() ->
                                            host=list_to_binary(util:get_param(ip)), port=util:get_param(port)})),
     Nodes = pfnode:get_list(),
     log4erl:info("Announcing myself to ~B peer node(s).", [length(Nodes)]),
-    io:format("Nodes: ~p~n", [Nodes]),
     announce_self(Json, Nodes).
 
 announce_self(Json, [Node|Rest])->

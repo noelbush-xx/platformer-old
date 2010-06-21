@@ -10,7 +10,7 @@ USAGE="usage: $0 [options] {start|stop|restart|status}"
 
 # Defaults
 PORT=8000
-CONFIG="app"
+CONFIG="platformer_node"
 
 # Get options and command
 set -- `getopt --options p:rBc:h --longoptions port:,reset-db,background,config:,help --unquoted -- "$@"`
@@ -57,10 +57,10 @@ if [ -n "$PLAIN_ARGS" ]; then
 fi
 
 # Path to pid file
-PIDFILE=$PRIV_DIR/$NODENAME.pid
+PIDFILE=$PRIV_DIR/pid/$NODENAME.pid
 
 # Arguments to erl
-ARGUMENTS="-pa $CODE_PATH -boot start_sasl -s reloader -s platformer -sname $NODENAME -config $PRIV_DIR/$CONFIG $PORTSPEC $DETACHED $PLAIN_ARGS"
+ARGUMENTS="-pa $CODE_PATH -boot start_sasl -s reloader -s platformer -sname $NODENAME -mnesia dir '$PRIV_DIR/db/Mnesia.$NODENAME' -config $PRIV_DIR/$CONFIG $PORTSPEC $DETACHED $PLAIN_ARGS"
 
 # Start and stop commands using start-stop-daemon
 DAEMON_START_CMD="start-stop-daemon --start --quiet --oknodo --exec $COMMAND --chdir $BASE_DIR --pidfile $PIDFILE -- $ARGUMENTS"
