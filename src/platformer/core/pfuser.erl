@@ -50,8 +50,10 @@ exists(_Id, []) -> {false, unknown}.
 %% @spec create() -> {Id, Path}
 create() ->
     Id = string:concat("platformer_user_", uuid:to_string(uuid:v4())),
-    case platformer_db:write(#pfuser{id=Id, status=active, last_modified=util:now_int()}) of
+    User = #pfuser{id=Id, status=active, last_modified=util:now_int()},
+    case platformer_db:write(User) of
         {atomic, ok} ->
+            liaison:propagate(?record_to_json(pfuser, User),
             {Id, string:concat("/userid/", Id)};
         {aborted, Error} ->
             throw(Error)

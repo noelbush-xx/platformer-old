@@ -7,7 +7,10 @@
 -export([create/1, create_from_list/1, get/1, delete/1, load_preconfigured/0, my_address/0,
          get_address/1, get_hash/1, get_list/0, get_path/1, is_me/1]).
 
-%% @spec delete_userid(int()) -> bool()
+%% @doc Delete a node identified by a hash.  Return value indicates
+%% whether the operation succeeded.
+
+%% @spec delete(binary()) -> bool()
 delete(Hash) ->
     F = fun() ->
                 [Node] = mnesia:read(pfuser, Hash, write),
@@ -20,22 +23,37 @@ delete(Hash) ->
             false
     end.
 
+%% @doc Create nodes from the given list of node specifications.
+%%
+%% @spec create_from_list([nodespec()]) -> is_me | {ok, node()} | {error, string()}
 create_from_list([Node|Rest]) ->
     create(Node),
     create_from_list(Rest);
 create_from_list([]) -> ok.
 
-create(#pfnode{} = Record) ->
-    create(Record, 100);
-create(Tuple) when is_tuple(Tuple) ->
+%% @doc Create a node from the given information, assuming a starting rating of 100.
+%% @see create/2
+%%
+%% @spec create(term() | tuple() | string()) -> is_me | {ok, node()} | {error, string()}
+create(NodeSpec) ->
+    create(NodeSpec, 100).
+
+%% @doc Create a node from the given information and the specified
+%%  rating.  A tuple will be parsed as a #pfnode record, first
+%%  converted if necessary; a string will be parsed as an address
+%%  (e.g., "http://localhost:8000").  The <code>is_me</code> return
+%%  result indicates that the given specification indicates the
+%%  current node and that no new node was created.
+%%
+%% @spec create(term() | tuple() | string(), integer()) -> is_me | {ok, node()} | {error, string()}
+create(Tuple, Rating) when is_tuple(Tuple) ->
     Proplist = [{binary_to_atom(X, latin1), Y} || {X, Y} <- tuple_to_list(Tuple)],
     RawRecord = list_to_tuple([pfnode|[proplists:get_value(X, Proplist) || X <- record_info(fields, pfnode)]]),
     Record = RawRecord#pfnode{scheme=binary_to_atom(RawRecord#pfnode.scheme, latin1)},
-    create(Record);
-create(Address) when is_list(Address) ->
+    create(Record, Rating);
+create(Address, Rating) when is_list(Address) ->
     {Scheme, _UserInfo, Host, Port, _Path, _Query} = http_uri:parse(Address),
     create(#pfnode{scheme=Scheme, host=list_to_binary(Host), port=Port}).
-
 create(#pfnode{} = Record, Rating) ->
     case is_me(Record) of
         true ->
@@ -66,9 +84,16 @@ create(#pfnode{} = Record, Rating) ->
             end
     end.
 
+%% @doc Construct the address of the given pfnode record.
+%%
+%% @spec get_address(NodeRecord) -> string()
 get_address(#pfnode{scheme=Scheme, host=Host, port=Port}) ->
     lists:concat([Scheme, "://", binary_to_list(Host), ":", Port]).
 
+%% @doc Construct the hash code representing the given node.  A string
+%% will be interpreted as an address, a record as a pfnode record.
+%%
+%% @spec get_hash(NodeRecord | string()) -> string()
 get_hash(#pfnode{} = Record) ->
     get_hash(get_address(Record));
 get_hash(Address) ->
@@ -98,7 +123,7 @@ get(Hash) ->
             not_found
     end.
     
-%% Ensure any preconfigured nodes are in the database.
+%% @doc Ensure any preconfigured nodes are in the database.
 load_preconfigured() ->
     case application:get_env(platformer, nodes) of
         {ok, Nodes} ->

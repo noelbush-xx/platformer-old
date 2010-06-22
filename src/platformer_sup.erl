@@ -92,7 +92,6 @@ init([]) ->
             log4erl:error("Could not find or create wmtrace directory ~s (Reason: ~s).~n", [TraceDir, Reason]),
             exit("Invalid wmtrace directory specified. " ++ Reason)
     end,
-    io:format("************ Did I ensure the existence of ~s?~n", [TraceDir]),
 
     %% Prepare the configuration for webmachine/mochiweb.
     WebConfig = [{ip, Ip},

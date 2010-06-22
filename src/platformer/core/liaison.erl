@@ -52,3 +52,9 @@ seek_peers([Node|Rest]) ->
 seek_peers([]) ->
     log4erl:info("No more nodes to query for peers."),
     ok.
+
+propagate(Json) ->
+    propagate(Json, util:get_param(propagation_age)).
+
+propagate(Json, Age) ->
+    

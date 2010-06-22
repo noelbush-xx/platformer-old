@@ -1,7 +1,7 @@
 %% @author Noel Bush <noel@platformer.org>
 %% @copyright 2010 Noel Bush.
 %% @doc A very simple resource to respond to pings.
--module(ping_resource).
+-module(platformer.ping_resource).
 -export([init/1, allowed_methods/2, options/2]).
 
 -include_lib("webmachine/include/webmachine.hrl").

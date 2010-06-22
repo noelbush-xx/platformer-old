@@ -3,7 +3,7 @@
 %% @doc Userid resource.
 %%
 %% This module contains functions used by different platformer resources.
--module(pfr).
+-module(platformer.pfr).
 
 -export([valid_extended_query_request/1, postprocess_rd/1]).
 

@@ -63,7 +63,7 @@ start({Chaos, MinNodes, MaxNodes, LowPort, HighPort, MinWait, MaxWait, StableSee
     io:format("  * stable seeds: ~p~n", [StableSeeds]),
     io:format("  * chaos: ~B%~n~n", [round(Chaos * 100)]),
     random:seed(now()),
-    io:format("[start stop wait]  ~s  { lag}~n", [string:copies(" ", HighPort - LowPort + 1)]),
+    io:format("[start stop wait]  ~s  {   lag}~n", [string:copies(" ", HighPort - LowPort + 1)]),
     loop(OptValues).
 
 loop(OptValues) -> loop(OptValues, []). 
@@ -74,7 +74,7 @@ loop({_, _, _, LowPort, HighPort, _, _, StableSeeds} = OptValues, []) ->
     statistics(wall_clock),
     start_nodes(StableSeeds),
     {_, Lag} = statistics(wall_clock),
-    io:format(" {~.2f}~n", [Lag / 1000]),
+    io:format(" {~6.2f}~n", [Lag / 1000]),
     loop(OptValues, StableSeeds);
 
 loop({Chaos, MinNodes, MaxNodes, LowPort, HighPort, MinWait, MaxWait, StableSeeds} = OptValues, Running) ->
@@ -94,7 +94,7 @@ loop({Chaos, MinNodes, MaxNodes, LowPort, HighPort, MinWait, MaxWait, StableSeed
     start_nodes(ToStart),
     stop_nodes(ToStop),
     {_, Lag} = statistics(wall_clock),
-    io:format(" {~.2f}~n", [Lag / 1000]),
+    io:format(" {~6.2f}~n", [Lag / 1000]),
     timer:sleep(lists:max([Wait * 1000 - Lag, 1])),
     NewRunning = lists:subtract(lists:concat([ToStart, Running]), ToStop),
     loop(OptValues, NewRunning).

@@ -124,10 +124,6 @@ resource_exists(ReqData, Context) ->
         end,
     {Exists, ReqData, NewContext}.
 
-%% Resource-specific functions
-
-
-
 %% @spec to_json(rd(), term()) -> {string(), rd(), term()}
 to_json(ReqData, Context) ->
     case wrq:method(ReqData) of

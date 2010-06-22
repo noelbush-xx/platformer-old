@@ -12,7 +12,7 @@
 %% OPTIONS     /node                       200 Access-Control-Allow-Methods: POST, OPTIONS
 %% OPTIONS     /node/address_hash          200 Access-Control-Allow-Methods: HEAD, DELETE, OPTIONS
 
--module(node_resource).
+-module(platformer.node_resource).
 -export([init/1, to_json/2]).
 -export([accept_content/2, allow_missing_post/2, allowed_methods/2,
          content_types_accepted/2,
