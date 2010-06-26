@@ -1,5 +1,6 @@
 .settings
-Mnesia*
+.hg
+deps/*/ebin/*
 erl_crash.dump
 ebin/*
 priv/db/*

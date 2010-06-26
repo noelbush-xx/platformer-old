@@ -19,7 +19,7 @@ ensure_started(App) ->
 %% @doc Starts the app for inclusion in a supervisor tree
 start_link() ->
     setup(),
-    platformer_sup:start_link().
+    platformer.otp.sup:start_link().
 
 %% @spec start() -> ok
 %% @doc Start the platformer server.

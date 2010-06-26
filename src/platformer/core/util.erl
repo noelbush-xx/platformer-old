@@ -1,9 +1,17 @@
 %% @author Noel Bush <noel@platformer.org>
 %% @copyright 2010 Noel Bush.
 %% @doc miscellaneous utilities.
--module(util).
+-module(platformer.core.util).
 
--export([get_param/1, get_param/2, md5/1, now_int/0, shuffle/1]).
+-import(application).
+-import(io_lib).
+-import(lists).
+-import(math).
+-import(mochijson).
+-import(random).
+-import(string).
+
+-export([get_param/1, get_param/2, json_wrap/2, jsonify/1, md5/1, now_int/0, shuffle/1]).
 
 %% From http://rosettacode.org/wiki/MD5#Erlang
 md5(S) ->
@@ -40,3 +48,11 @@ get_param(Par, Default) ->
 now_int() ->
     {Int, _} = string:to_integer(lists:concat(tuple_to_list(now()))),
     Int.
+
+%% Encode the given data as json and wrap it with the given prefix.
+json_wrap(Prefix, Data) ->
+  io_lib:format("~s(~s);", [Prefix, jsonify(Data)]).
+
+%% json-ify the given data.
+jsonify(Data) ->
+  mochijson:encode({struct, Data}).

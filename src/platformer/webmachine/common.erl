@@ -3,14 +3,18 @@
 %% @doc Userid resource.
 %%
 %% This module contains functions used by different platformer resources.
--module(platformer.pfr).
+-module(platformer.webmachine.common).
 
 -export([valid_extended_query_request/1, postprocess_rd/1]).
 
--include_lib("webmachine/include/webmachine.hrl").
--include_lib("stdlib/include/qlc.hrl").
+-import(wrq).
 
--include("platformer.hrl").
+-import(platformer.core.node).
+-import(platformer.core.util).
+
+-include_lib("webmachine/include/webmachine.hrl").
+
+-include_lib("platformer.hrl").
 
 %% Validate a webmachine #wm_reqdata() term for a Platformer query:
 %% - Ensure there is an X-Platformer-Query-Token request header
@@ -34,8 +38,8 @@ postprocess_rd(ReqData) ->
     case wrq:get_req_header("X-Platformer-Node", ReqData) of
         undefined -> true;
         Address ->
-            case pfnode:get(util:md5(Address)) of
-                not_found -> pfnode:create(Address);
+            case node:get(util:md5(Address)) of
+                not_found -> node:create(Address);
                 _Server -> true
             end
     end,

@@ -1,6 +1,6 @@
 #!/bin/bash
 COMMAND="/usr/bin/erl"
-CODE_PATH="$PWD/ebin $PWD/deps/webmachine/ebin $PWD/deps/webmachine/deps/mochiweb/ebin $PWD/deps/log4erl/ebin"
+CODE_PATH="$PWD/ebin $PWD/include $PWD/deps/*/ebin"
 BASE_DIR=$(cd `dirname $0` && pwd)
 PRIV_DIR="$BASE_DIR/priv"
 

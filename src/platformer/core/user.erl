@@ -1,15 +1,30 @@
 %% @author Noel Bush <noel@platformer.org>
 %% @copyright 2010 Noel Bush.
 
--module(pfuser).
--include_lib("stdlib/include/qlc.hrl").
--include("platformer.hrl").
+-module(platformer.core.user).
+
 -export([create/0, delete/1, exists/1]).
 
-%% @spec exists(int(), bool()) -> {bool(), atom()}
+-import(httpc).
+-import(lists).
+-import(mnesia).
+-import(string).
+-import(qlc).
+
+-import(jsonerl).
+-import(log4erl).
+-import(uuid).
+
+-import(platformer.core.liaison).
+
+-include_lib("stdlib/include/qlc.hrl").
+-include_lib("jsonerl.hrl").
+-include_lib("platformer.hrl").
+
+%% @spec exists({binary(), bool()}) -> {bool(), active | deleted}
 exists({Id, CheckOtherNodes}) ->
     %% First check the local database.
-    Result = platformer_db:find(qlc:q([X || X <- mnesia:table(pfuser),
+    Result = db:find(qlc:q([X || X <- mnesia:table(pfuser),
                                             X#pfuser.id == Id])),
     case length(Result) of
         1 ->
@@ -21,18 +36,22 @@ exists({Id, CheckOtherNodes}) ->
         0 ->
             %% Not found locally -- only check other nodes if instructed to do so.
             case CheckOtherNodes of
-                true -> exists(Id, pfnode:get_list());
+                true -> exists(Id, node:get_list());
                 false -> {false, unknown}
             end;
         _ ->
             throw({codingError, "Multiple results found for id!"})
     end.
     
+exists(Id, Nodes) when is_binary(Id) ->
+    exists(binary_to_list(Id), Nodes);
+
+%% @spec exists(string(), [NodeRecord]) -> {bool(), active | deleted}
 exists(Id, [#pfnode{} = Node|Nodes]) ->
-    case pfnode:is_me(Node) of
+    case node:is_me(Node) of
         false ->
-            case httpc:request(head, {lists:concat([pfnode:get_address(Node), "/user/", Id]),
-                                      [{"X-Platformer-Node", pfnode:my_address()}]}, [], []) of
+            case httpc:request(head, {lists:concat([node:get_address(Node), "/user/", Id]),
+                                      [{"X-Platformer-Node", node:my_address()}]}, [], []) of
                 {ok, {{_, Status, _}, _, _}} ->
                     case Status of
                         200 -> {true, active};
@@ -49,12 +68,14 @@ exists(_Id, []) -> {false, unknown}.
 
 %% @spec create() -> {Id, Path}
 create() ->
-    Id = string:concat("platformer_user_", uuid:to_string(uuid:v4())),
+    IdString = string:concat("platformer_user_", uuid:to_string(uuid:v4())),
+    Id = list_to_binary(IdString),
     User = #pfuser{id=Id, status=active, last_modified=util:now_int()},
-    case platformer_db:write(User) of
+    case db:write(User) of
         {atomic, ok} ->
-            liaison:propagate(?record_to_json(pfuser, User),
-            {Id, string:concat("/userid/", Id)};
+            log4erl:info("Propagating new user ~s", IdString),
+            %%spawn_link(platformer.core.liaison, propagate, ?record_to_json(pfuser, User)),
+            {Id, string:concat("/userid/", IdString)};
         {aborted, Error} ->
             throw(Error)
     end.

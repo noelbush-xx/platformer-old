@@ -4,24 +4,23 @@
   {description, "platformer"},
   {vsn, "1"},
   {modules, [
-             %% Basic modules
+             %% OTP- and Webmachine- related setup modules
              platformer,
-             platformer_app,
-             platformer_sup,
-             platformer_db,
-             platformer_error_handler,
+             platformer.otp.app,
+             platformer.otp.sup,
              %% Webmachine resources
-             ping_resource,
-             node_resource,
-             user_resource,
-             %% Other application modules
-             pfnode,
-             pfuser,
-             %% Utility modules
-             liaison,
-             pfr,
-             json,
-             util,
+             platformer.webmachine.ping_resource,
+             platformer.webmachine.node_resource,
+             platformer.webmachine.user_resource,
+             platformer.webmachine.common,
+             platformer.webmachine.error_handler,
+             %% Core application modules
+             platformer.core.launcher,
+             platformer.core.db,
+             platformer.core.node,
+             platformer.core.user,
+             platformer.core.liaison,
+             platformer.core.util,
              %% Externals
              crone,
              jsonerl,
@@ -36,6 +35,6 @@
                   mochiweb,
                   webmachine
                  ]},
-  {mod, { platformer_app, []}},
+  {mod, {platformer.otp.app, []}},
   {env, []}
  ]}.

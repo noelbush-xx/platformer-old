@@ -12,7 +12,7 @@
 %% OPTIONS     /node                       200 Access-Control-Allow-Methods: POST, OPTIONS
 %% OPTIONS     /node/address_hash          200 Access-Control-Allow-Methods: HEAD, DELETE, OPTIONS
 
--module(platformer.node_resource).
+-module(platformer.webmachine.node_resource).
 -export([init/1, to_json/2]).
 -export([accept_content/2, allow_missing_post/2, allowed_methods/2,
          content_types_accepted/2,
@@ -24,11 +24,19 @@
          process_post/2,
          resource_exists/2]).
 
--include_lib("webmachine/include/webmachine.hrl").
--include_lib("stdlib/include/qlc.hrl").
--include_lib("external/jsonerl/jsonerl.hrl").
+-import(dict).
+-import(jsonerl).
+-import(lists).
+-import(log4erl).
+-import(wrq).
 
--include("platformer.hrl").
+-import(platformer.core.node).
+-import(platformer.core.db).
+
+-include_lib("webmachine/include/webmachine.hrl").
+-include_lib("jsonerl.hrl").
+
+-include_lib("platformer.hrl").
 
 -record(context, {config,
                   body,     %% in a POST, this will hold the parsed body
@@ -58,9 +66,9 @@ content_types_provided(ReqData, Context) ->
     {[{"text/javascript", to_json}], ReqData, Context}.
 
 create_path(ReqData, Context) ->
-    case pfnode:create(Context#context.record) of
+    case node:create(Context#context.record) of
         {ok, Node} ->
-            Path = pfnode:get_path(Node),
+            Path = node:get_path(Node),
             {Path, wrq:set_resp_header("Location", Path, ReqData), Context#context{record=Node}};
         {error, Error} ->
             {"", wrq:append_to_response_body("Could not create new node.\n" ++ Error, ReqData), Context}
@@ -70,7 +78,7 @@ delete_completed(ReqData, Context) ->
     {true, ReqData, Context}.
 
 delete_resource(ReqData, Context) ->
-    {pfnode:delete(wrq:path_info(hash, ReqData)), ReqData, Context}.
+    {node:delete(wrq:path_info(hash, ReqData)), ReqData, Context}.
 
 malformed_request(ReqData, Context) ->
     {MF, NewReqData, NewContext} =
@@ -92,13 +100,16 @@ malformed_request(ReqData, Context) ->
                 %% Check that the body contains a json object with the node spec
                 Body = wrq:req_body(ReqData),
                 {MF1, NRD1, NC1} =
-                    try ?json_to_record(pfnode, binary_to_list(Body)) of
+                    try ?json_to_record(nodespec, binary_to_list(Body)) of
                         %% Since we have to construct the record to determine its validity, we'll hang onto it
                         %% (We fix the scheme as an atom while we're at it.)
-                        #pfnode{} = Record -> 
-                            {false, ReqData, Context#context{
-                                               record = Record#pfnode{scheme=binary_to_atom(Record#pfnode.scheme, latin1)
-                                                                           }}}
+                        #nodespec{} = Record -> 
+                            {false, ReqData,
+                             Context#context{record = #pfnode{scheme = binary_to_atom(Record#nodespec.scheme, latin1),
+                                                              host = Record#nodespec.host,
+                                                              port = Record#nodespec.port
+                                                             }
+                                            }}
                     catch error ->
                             {true, wrq:append_to_response_body("Invalid or missing node specification."), Context}
                     end,
@@ -108,7 +119,7 @@ malformed_request(ReqData, Context) ->
                     _ -> {true, wrq:append_to_response_body("Do not POST to an existing node."), NC1}
                 end
         end,
-    {MF, pfr:postprocess_rd(NewReqData), NewContext}.
+    {MF, common:postprocess_rd(NewReqData), NewContext}.
 
 moved_permanently(ReqData, Context) ->
     {false, ReqData, Context}.
@@ -129,12 +140,12 @@ options(ReqData, Context) ->
 %% POST is only create if the request body describes a node we don't yet know.
 post_is_create(ReqData, Context) ->
     % TODO: just get directly from record(?)
-    {case pfnode:get(pfnode:get_hash(Context#context.record)) of
+    {case node:get(node:get_hash(Context#context.record)) of
          not_found ->
-             log4erl:debug("Received POST with new pfnode: ~p", [pfnode:get_address(Context#context.record)]),
+             log4erl:debug("Received POST with new node: ~p", [node:get_address(Context#context.record)]),
              true;
          _Node ->
-             log4erl:debug("Received POST with previously known pfnode: ~p", [pfnode:get_address(Context#context.record)]),
+             log4erl:debug("Received POST with previously known node: ~p", [node:get_address(Context#context.record)]),
              false
      end,
      ReqData, Context}.
@@ -149,7 +160,7 @@ previously_existed(ReqData, Context) ->
 %% found, in which case we just want to send a 303 "See Other"
 %% response.
 process_post(ReqData, Context) ->
-    {true, wrq:do_redirect(true, wrq:set_resp_header("Location", pfnode:get_path(Context#context.record), ReqData)), Context}.
+    {true, wrq:do_redirect(true, wrq:set_resp_header("Location", node:get_path(Context#context.record), ReqData)), Context}.
 
 resource_exists(ReqData, Context) ->
     resource_exists(wrq:method(ReqData), ReqData, Context).
@@ -158,7 +169,7 @@ resource_exists(Method, ReqData, Context) when Method =:= 'GET'; Method =:= 'HEA
     case wrq:raw_path(ReqData) of
         "/node/list" -> {true, ReqData, Context};
         _ ->
-            case pfnode:get(wrq:path_info('hash', ReqData)) of
+            case node:get(wrq:path_info('hash', ReqData)) of
                 not_found -> {false, ReqData, Context};
                 Node -> {true, ReqData, Context#context{record = Node}}
             end
@@ -169,29 +180,21 @@ resource_exists(_, ReqData, Context) -> {true, ReqData, Context}.
 
 %% @spec to_json(rd(), term()) -> {string(), rd(), term()}
 to_json(ReqData, Context) ->
-    case wrq:method(ReqData) of
-        'GET' ->
-            case wrq:path_info(hash, ReqData) of
-                undefined ->
-                    %% Of the known nodes with rating 75 or greater,
-                    %% share a random sample of 25%.
-                    {case platformer_db:find(qlc:q([X || X <- mnesia:table(pfnode), X#pfnode.rating > 75])) of
-                         undefined -> <<>>;
-                         [] -> <<"[]">>;
-                         Nodes ->
-                             Choices = lists:sublist(util:shuffle(Nodes), trunc(length(Nodes) * 0.25 + 1)),
-                             ListRecord = #nodes{nodes=[?record_to_struct(pfnode, Node) || Node <- Choices]},
-                             jsonerl:encode(?record_to_struct(nodes, ListRecord))
-                     end,
-                     ReqData, Context};
-                Hash ->
-                    {case platformer_db:find(qlc:q([X || X <- mnesia:table(pfnode), X#pfnode.hash == Hash])) of
+    {case wrq:method(ReqData) of
+         'GET' ->
+             case wrq:path_info(hash, ReqData) of
+                 undefined ->
+                     %% Of the known nodes with rating 75 or greater,
+                     %% share a random sample of 25%.
+                     Nodes = node:get_random_list({percentage, 25}, [{min_rating, 75}]),
+                     jsonerl:encode(?record_to_struct(nodes, #nodes{nodes=Nodes}));
+                 Hash ->
+                     case node:get(Hash) of
                          undefined -> <<>>;
                          Node -> ?record_to_json(pfnode, Node)
-                     end,
-                     ReqData, Context}
-            end;
-        _ ->
-            {<<>>, ReqData, Context}
-    end.
+                     end
+             end;
+         _ -> <<>>
+     end,
+     ReqData, Context}.
 

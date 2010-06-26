@@ -1,8 +1,11 @@
--module(platformer_db).
+-module(platformer.core.db).
 -export([check_tables/0, delete/1, find/1, read_all/1, reset/0, write/1]).
 
--include_lib("stdlib/include/qlc.hrl").
+-import(log4erl).
+-import(mnesia).
+-import(qlc).
 
+-include_lib("stdlib/include/qlc.hrl").
 -include("platformer.hrl").
 
 %% This checks that the tables are present.  It doesn't check their
@@ -45,7 +48,7 @@ reset() ->
     mnesia:create_table(pfuser, [{disc_copies, [node()]}, {attributes, record_info(fields, pfuser)}]),
     mnesia:create_table(pfnode, [{disc_copies, [node()]}, {attributes, record_info(fields, pfnode)}]),
     mnesia:create_table(query_token, [{disc_copies, [node()]}, {attributes, record_info(fields, query_token)}]),
-    pfnode:load_preconfigured(),
+    node:load_preconfigured(),
     ok.
 
 transaction(F) ->

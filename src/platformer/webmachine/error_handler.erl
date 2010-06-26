@@ -1,6 +1,10 @@
--module(platformer_error_handler).
+-module(platformer.webmachine.error_handler).
 
 -export([render_error/3]).
+
+-import(eq).
+-import(error_logger).
+-import(io_lib).
 
 render_error(Code, Req, Reason) ->
     case Req:has_response_body() of

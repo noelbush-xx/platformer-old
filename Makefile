@@ -1,19 +1,28 @@
-ERL          ?= erl
-EBIN_DIRS    := $(wildcard deps/*/ebin)
-APP          := platformer
+ERL ?= erl
+APP := platformer
+DOC_INCLUDES := "deps"
+WM_DOCS := "<a href=\"http://bitbucket.org/justin/webmachine/wiki/WebmachineResources\" target=\"_top\">Webmachine Resources</a>"
 
-all: ebin/$(APP).app erl
+.PHONY: deps traceclean
+
+all: deps
+	@./rebar compile
+
+deps:
+	@cp ./src/platformer.app ./ebin/
+	@./rebar get-deps
 	@rm -f deps/log4erl/ebin/mochinum.beam # Already provided by mochiweb
 
-erl:
-	./rebar compile
+clean: traceclean
+	@echo "removing:"
+	@./rebar clean
+
+distclean:
+	@./rebar delete-deps
 
 docs:
-	@erl -noshell -run edoc_run application '$(APP)' '"."' '[]'
+	@erl -noshell -run edoc_run application '$(APP)' '"."' '[{preprocess, true}, {includes, [$(DOC_INCLUDES)]}, {exclude_packages, [external]}, {def, [{wmdocs, $(WM_DOCS)}]}]'
+	@cp src/edoc.css doc/stylesheet.css
 
-clean: 
-	@echo "removing:"
-	@rm -fv ebin/*.beam ebin/*.app
-
-ebin/$(APP).app: src/$(APP).app
-	@cp -v src/$(APP).app $@
+traceclean:
+	@rm -rf /tmp/platformer/platformer*/*
