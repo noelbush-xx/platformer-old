@@ -1,6 +1,7 @@
 .settings
 .hg
 deps/*/ebin/*
+doc
 erl_crash.dump
 ebin/*
 priv/db/*
