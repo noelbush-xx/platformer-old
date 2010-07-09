@@ -1,7 +1,7 @@
+#!/bin/bash
 ##
 # Start/stop multiple Platformer nodes at once
 #
-#!/bin/bash
 USAGE="usage: $0 [options] {start|stop|restart|status}"
 
 . /lib/lsb/init-functions || (echo "Missing LSB init-functions; this script won't work right." && exit 1)
@@ -17,10 +17,10 @@ CONFIG="app"
 
 ARGS="--background"
 
-set -- `getopt --options n:s:rc:h --longoptions number:,start:,reset-db,config:,help --unquoted -- "$@"`
+set -- `getopt --options C:s:rc:h --longoptions count:,start:,reset-db,config:,help --unquoted -- "$@"`
 while [ $# -gt 0 ]; do
     case "$1" in
-        -n|--number)      NODE_COUNT=$2; shift;;
+        -C|--count)       NODE_COUNT=$2; shift;;
         -s|--start)       START_PORT=$2; shift;;
         -c|--config)      ARGS="$ARGS --config=$2"; shift;;
         -l|--log-config)  ARGS="$ARGS --log-config=$2"; shift;;
@@ -28,7 +28,7 @@ while [ $# -gt 0 ]; do
         -h|--help)
                           echo $USAGE;
                           echo "options (specify any or none):"
-                          echo "-n|--number=NUMBER     how many Platformer nodes to start (default: $NODE_COUNT)"
+                          echo "-C|--count=NUMBER      how many Platformer nodes to start (default: $NODE_COUNT)"
                           echo "-s|--start=PORT        the port number to start with (default: $START_PORT)"
                           echo "-r|--reset-db          reset the database(s) on startup"
                           echo "-c|--config=NAME       read application configuration from NAME.config (default: $APP_CONFIG)"

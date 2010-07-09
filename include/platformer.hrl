@@ -6,7 +6,7 @@
                 }).
 
 %% A Platformer node.
--record(pfnode, {hash,           % an md5 hash of the node address
+-record(pfnode, {id,             % an id for the node (formed using a prefix and an md5 hash of the address)
                  scheme,         % http | https
                  host,           % hostname (e.g., example.com)
                  port,           % port (e.g., 8000)
@@ -25,3 +25,5 @@
 -record(nodespec, {scheme,       % http | https
                    host,         % hostname (e.g., example.com)
                    port}).       % port (e.g., 8000)
+
+

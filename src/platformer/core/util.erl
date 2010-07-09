@@ -9,15 +9,29 @@
 -import(math).
 -import(mochijson).
 -import(random).
+-import(re).
 -import(string).
 
--export([get_param/1, get_param/2, json_wrap/2, jsonify/1, md5/1, now_int/0, shuffle/1]).
+-import(uuid).
+
+-export([get_param/1, get_param/2, is_valid_uuid/1, json_wrap/2, jsonify/1, md5/1, now_int/0, shuffle/1, uuid/0]).
 
 %% From http://rosettacode.org/wiki/MD5#Erlang
 md5(S) ->
     string:to_upper(
       lists:flatten([io_lib:format("~2.16.0b",[N]) || <<N>> <= erlang:md5(S)])
      ).
+
+uuid() ->
+    uuid:to_string(uuid:v4()).
+
+%% @doc Verify that the given string is a valid v4 UUID.
+is_valid_uuid(String) ->
+    case re:run(String, "[[:xdigit:]]{8}-[[:xdigit:]]{4}-4[[:xdigit:]]{3}-[89ab][[:xdigit:]]{3}-[[:xdigit:]]{12}") of
+        {match, _} -> true; 
+        nomatch -> false
+    end.
+    
 
 %% From http://www.trapexit.org/RandomShuffle
 shuffle(List) ->

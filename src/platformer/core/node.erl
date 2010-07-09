@@ -17,16 +17,18 @@
 -include_lib("jsonerl.hrl").
 -include_lib("platformer.hrl").
 
--export([create/1, create_from_list/1, get/1, delete/1, load_preconfigured/0, my_address/0,
-         get_address/1, get_hash/1, get_list/0, get_random_list/1, get_random_list/2, get_path/1, is_me/1]).
+-export([adjust_rating/2, create/1, create_from_list/1, get/1,
+         delete/1, load_preconfigured/0, my_address/0, get_address/1,
+         get_id/1, get_list/0, get_random_list/1, get_random_list/2,
+         get_path/1, is_me/1]).
 
-%% @doc Deletes a node identified by a hash.  Return value indicates
+%% @doc Deletes a node identified by an id.  Return value indicates
 %% whether the operation succeeded.
 
 %% @spec delete(binary()) -> bool()
-delete(Hash) ->
+delete(Id) ->
     F = fun() ->
-                [Node] = mnesia:read(pfuser, Hash, write),
+                [Node] = mnesia:read(pfuser, Id, write),
                 mnesia:write(Node#pfnode{status=deleted, last_modified=util:now_int()})
         end,
     case mnesia:transaction(F) of
@@ -62,18 +64,18 @@ create(NodeSpec) ->
 create(#pfnode{} = Record, Rating) ->
     case is_me(Record) of
         true ->
-            log4erl:info("Will not create record for own node."),
+            %% log4erl:debug("Will not create record for own node."),
             is_me;
         _ ->
             Address = get_address(Record),
-            Hash = get_hash(Address),
+            Id = get_id(Address),
 
             %% First check whether node record already exists in database.
-            case node:get(Hash) of
+            case node:get(Id) of
                 not_found ->
                     % Augment the supplied record to become a full-fledged node record.
                     Node = Record#pfnode{status=active,
-                                           hash=list_to_binary(Hash),
+                                           id=list_to_binary(Id),
                                            rating=Rating,
                                            last_modified=util:now_int()},
                     log4erl:info("Creating new node with address ~p.", [Address]),
@@ -84,7 +86,7 @@ create(#pfnode{} = Record, Rating) ->
                             {error, Error}
                     end;
                 Node ->
-                    log4erl:info("Node ~p is already known.", [Address]),
+                    %% log4erl:debug("Node ~p is already known.", [Address]),
                     {already_exists, Node}
             end
     end;
@@ -103,23 +105,23 @@ create(Address, Rating) when is_list(Address) ->
 get_address(#pfnode{scheme=Scheme, host=Host, port=Port}) ->
     lists:concat([Scheme, "://", binary_to_list(Host), ":", Port]).
 
-%% @doc Constructs the hash code representing the given node.  A string
+%% @doc Constructs the id representing the given node.  A string
 %% will be interpreted as an address, a record as a pfnode record.
 %%
-%% @spec get_hash(NodeRecord | string()) -> string()
-get_hash(#pfnode{} = Record) ->
-    get_hash(get_address(Record));
-get_hash(Address) ->
-    util:md5(Address).
+%% @spec get_id(NodeRecord | string()) -> string()
+get_id(#pfnode{} = Record) ->
+    get_id(get_address(Record));
+get_id(Address) ->
+    string:concat("platformer_node_", util:md5(Address)).
 
 %% @doc Returns the path that should be used (appended to hostname for URI)
 %% for referring to this node.
 %%
 %% @spec get_path(NodeRecord) -> string()
-get_path(#pfnode{hash=Hash}) when Hash =/= undefined ->
-    "/node/" ++ binary_to_list(Hash);
+get_path(#pfnode{id=Id}) when Id =/= undefined ->
+    "/node/" ++ binary_to_list(Id);
 get_path(#pfnode{} = Record) ->
-    "/node/" ++ get_hash(Record).
+    "/node/" ++ get_id(Record).
 
 %% @doc Indicates whether the given node record refers to the current node.
 %%
@@ -136,11 +138,15 @@ is_me(#pfnode{host=Host, port=Port}) ->
 get_list() ->
     db:read_all(pfnode).
 
-%% @doc Retrieves a node from its hash code.
+%% @doc Retrieves a node from its id, or from a constructed
+%% record that contains an id.
 %%
-%% @spec get(string()) -> NodeRecord
-get(Hash) ->
-    Result = db:find(qlc:q([X || X <- mnesia:table(pfnode), X#pfnode.hash == list_to_binary(Hash)])),
+%% @spec get(string() | pfnode()) -> NodeRecord | not_found
+%% get(#pfnode{} = Node) ->
+%%     node:get(binary_to_list(Node#pfnode.id));
+get(Id) ->
+    .io:format("You ask me to get ~p~n", [Id]),
+    Result = db:find(qlc:q([X || X <- mnesia:table(pfnode), X#pfnode.id == list_to_binary([Id])])),
     case length(Result) of
         1 ->
             hd(Result);
@@ -179,10 +185,10 @@ get_random_list(SampleSize, Criteria) ->
             SublistSize = 
                 case SampleSize of
                     {percentage, Percentage} -> trunc(length(Nodes) * Percentage / 100 + 1);
-                    {count, Count} -> lists:min([length(Nodes), Count])
+                    {count, Count} -> lists:min([length(Nodes), Count]);
+                    _ -> throw({error, "Invalid value for SampleSize"})
                 end,
-            Choices = lists:sublist(util:shuffle(Nodes), SublistSize),
-            [?record_to_struct(pfnode, Node) || Node <- Choices]
+            lists:sublist(util:shuffle(Nodes), SublistSize)
     end.
 
     
@@ -190,7 +196,7 @@ get_random_list(SampleSize, Criteria) ->
 %%
 %% @spec load_preconfigured() -> ok
 load_preconfigured() ->
-    case application:get_env(platformer, nodes) of
+    case application:get_env(platformer, seeds) of
         {ok, Nodes} ->
             log4erl:info("Loading ~B preconfigured node(s) from app config.", [length(Nodes)]),
             load_preconfigured(Nodes);
@@ -211,3 +217,14 @@ load_preconfigured([]) -> ok.
 %% @spec my_address() -> string()
 my_address() ->
     lists:concat(["http://", util:get_param(ip, httpd_socket:resolve()), ":", util:get_param(port, 2010)]).
+
+adjust_rating(Node, Adjustment) ->
+    CurrentRating = Node#pfnode.rating,
+    NewRating = lists:min([100, lists:max([0, CurrentRating + Adjustment])]),
+    if
+        NewRating =/= CurrentRating ->
+            log4erl:debug("Adjusting rating for node from ~B to ~B.", [CurrentRating, NewRating]),
+            db:write(Node#pfnode{rating=NewRating});
+        NewRating =:= CurrentRating ->
+            ok
+    end.

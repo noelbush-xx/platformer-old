@@ -97,12 +97,11 @@
                      [201],
                      {type: 'POST',
                       dataType: 'json',
-                      success: Platformer._showStatus,
                       success: function (data, textStatus, xhr) {
                         Platformer._showStatus(xhr, textStatus);
                         switch (xhr.status) {
                         case 201:
-                          pf.updateUserids(data.userid);
+                          pf.updateUserids(data.user.id);
                           Platformer.log('Successfully retrieved new userid.');
                           break;
                         }
@@ -121,7 +120,7 @@
      },
 
      /*
-      * Test whether the currently selected userid is known to exist.
+      * Test whether the currently selected user is known to exist.
       * It might not if it has been deleted elsewhere.
       */
      testUseridExists: function () {
@@ -132,7 +131,7 @@
                        Platformer._showStatus(xhr, textStatus);
                        switch (xhr.status) {
                        case 200:
-                         Platformer.log('Userid exists.');
+                         Platformer.log('User exists.');
                          break;
                        }
                      },
@@ -140,13 +139,13 @@
                        Platformer._showStatus(xhr, textStatus);
                        switch (xhr.status) {
                        case 410:
-                         Platformer.log('Userid has been deleted.');
+                         Platformer.log('User has been deleted.');
                          break;
                        }
                      },
                      beforeSend: function (xhr) {
-                       xhr.setRequestHeader("X-Platformer-Query-Token", Math.uuid());
-                       xhr.setRequestHeader("X-Platformer-Query-Age", "0");
+                       xhr.setRequestHeader("X-Platformer-Message-Token", Math.uuid());
+                       xhr.setRequestHeader("X-Platformer-Message-Priority", "0");
                      }
                     });
      },

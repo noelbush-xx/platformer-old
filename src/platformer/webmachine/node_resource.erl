@@ -6,11 +6,11 @@
 %%
 %% Method      URI                      -->  Successful Response
 %% GET         /node/list                  200 text/javascript list of nodes (length of list is up to node)
-%% POST        /node (+json-enc address)   201 Location: URI of new node ("/node/address_hash")
-%% HEAD        /node/address_hash          200 (if node exists)
-%% DELETE      /node/address_hash          204
+%% POST        /node (+json-enc address)   201 Location: URI of new node ("/node/id")
+%% HEAD        /node/id                    200 (if node exists)
+%% DELETE      /node/id                    204
 %% OPTIONS     /node                       200 Access-Control-Allow-Methods: POST, OPTIONS
-%% OPTIONS     /node/address_hash          200 Access-Control-Allow-Methods: HEAD, DELETE, OPTIONS
+%% OPTIONS     /node/id                    200 Access-Control-Allow-Methods: HEAD, DELETE, OPTIONS
 
 -module(platformer.webmachine.node_resource).
 -export([init/1, to_json/2]).
@@ -47,8 +47,8 @@
 -record(nodes, {nodes}).
 
 init(Config) ->
-    {{trace, "/tmp/platformer/" ++ atom_to_list(node())}, #context{config=Config}}.  %% debugging code
-    %%{ok, #context{config=Config}}.             %% regular code
+    %%{{trace, "/tmp/platformer/" ++ atom_to_list(node())}, #context{config=Config}}.  %% debugging code
+    {ok, #context{config=Config}}.             %% regular code
 
 accept_content(ReqData, Context) ->
     {true, ReqData, Context}.
@@ -78,22 +78,22 @@ delete_completed(ReqData, Context) ->
     {true, ReqData, Context}.
 
 delete_resource(ReqData, Context) ->
-    {node:delete(wrq:path_info(hash, ReqData)), ReqData, Context}.
+    {node:delete(wrq:path_info(id, ReqData)), ReqData, Context}.
 
 malformed_request(ReqData, Context) ->
     {MF, NewReqData, NewContext} =
         case wrq:method(ReqData) of
             'DELETE' ->
-                case wrq:path_info(hash, ReqData) of
+                case wrq:path_info(id, ReqData) of
                     undefined -> 
-                        {true, wrq:append_to_response_body("No node hash specified.", ReqData), Context};
+                        {true, wrq:append_to_response_body("No node id specified.", ReqData), Context};
                     _ ->
                         {false, ReqData, Context}
                 end;
             'GET' ->
                 {false, ReqData, Context};
             'HEAD' ->
-                {case wrq:path_info(hash, ReqData) of undefined -> true; _ -> false end, ReqData, Context};
+                {case wrq:path_info(id, ReqData) of undefined -> true; _ -> false end, ReqData, Context};
             'OPTIONS' ->
                 {false, ReqData, Context};
             'POST' ->
@@ -114,9 +114,9 @@ malformed_request(ReqData, Context) ->
                             {true, wrq:append_to_response_body("Invalid or missing node specification."), Context}
                     end,
                 %% Be sure the path is right.
-                case wrq:path_info(hash, ReqData) of
+                case wrq:path_info(id, ReqData) of
                     undefined -> {false and MF1, NRD1, NC1};
-                    _ -> {true, wrq:append_to_response_body("Do not POST to an existing node."), NC1}
+                    _ -> {true, wrq:append_to_response_body("Do not POST to an existing node.", NRD1), NC1}
                 end
         end,
     {MF, common:postprocess_rd(NewReqData), NewContext}.
@@ -129,7 +129,7 @@ moved_temporarily(ReqData, Context) ->
 
 options(ReqData, Context) ->
     {[{"Access-Control-Allow-Origin", "*"},
-      case wrq:path_info(hash, ReqData) of
+      case wrq:path_info(id, ReqData) of
           undefined ->
               {"Access-Control-Allow-Methods", "OPTIONS, POST"};
           _ ->
@@ -139,13 +139,14 @@ options(ReqData, Context) ->
 
 %% POST is only create if the request body describes a node we don't yet know.
 post_is_create(ReqData, Context) ->
-    % TODO: just get directly from record(?)
-    {case node:get(node:get_hash(Context#context.record)) of
+    Record = Context#context.record,
+    .io:format("Record: ~p~n", [Record]),
+    {case node:get(Record) of
          not_found ->
-             log4erl:debug("Received POST with new node: ~p", [node:get_address(Context#context.record)]),
+             %% log4erl:debug("Received POST with new node: ~p", [node:get_address(Record)]),
              true;
          _Node ->
-             log4erl:debug("Received POST with previously known node: ~p", [node:get_address(Context#context.record)]),
+             %% log4erl:debug("Received POST with previously known node: ~p", [node:get_address(Record)]),
              false
      end,
      ReqData, Context}.
@@ -169,7 +170,7 @@ resource_exists(Method, ReqData, Context) when Method =:= 'GET'; Method =:= 'HEA
     case wrq:raw_path(ReqData) of
         "/node/list" -> {true, ReqData, Context};
         _ ->
-            case node:get(wrq:path_info('hash', ReqData)) of
+            case node:get(wrq:path_info(id, ReqData)) of
                 not_found -> {false, ReqData, Context};
                 Node -> {true, ReqData, Context#context{record = Node}}
             end
@@ -182,14 +183,15 @@ resource_exists(_, ReqData, Context) -> {true, ReqData, Context}.
 to_json(ReqData, Context) ->
     {case wrq:method(ReqData) of
          'GET' ->
-             case wrq:path_info(hash, ReqData) of
+             case wrq:path_info(id, ReqData) of
                  undefined ->
                      %% Of the known nodes with rating 75 or greater,
                      %% share a random sample of 25%.
-                     Nodes = node:get_random_list({percentage, 25}, [{min_rating, 75}]),
+                     NodeRecords = node:get_random_list({percentage, 25}, [{min_rating, 75}]),
+                     Nodes = [?record_to_struct(pfnode, Node) || Node <- NodeRecords],
                      jsonerl:encode(?record_to_struct(nodes, #nodes{nodes=Nodes}));
-                 Hash ->
-                     case node:get(Hash) of
+                 Id ->
+                     case node:get(Id) of
                          undefined -> <<>>;
                          Node -> ?record_to_json(pfnode, Node)
                      end

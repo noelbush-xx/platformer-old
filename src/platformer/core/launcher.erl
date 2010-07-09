@@ -27,26 +27,31 @@ startup() ->
     PrivDir = filename:join([filename:dirname(code:which(?MODULE)), "..", "..", "..", "priv"]),
     DispatchPath = filename:join([PrivDir, util:get_param(dispatch, "dispatch.conf")]),
     WMLogDir = filename:join([PrivDir, util:get_param(log_dir, "log")]),
+    SeparateLog = util:get_param(separate_log, true),
 
-    %% Configure Platformer logging.
+    %% Start and configure logging.
     application:start(log4erl),
     log4erl:conf(filename:join([PrivDir, "log4erl.conf"])),
-
-    %% Write the pid to a file
-    PidFile = filename:join([PrivDir, "pid", lists:concat([string:sub_word(atom_to_list(node()), 1, $@), ".pid"])]),
-    file:write_file(PidFile, os:getpid()),
-
-    %% Configure the logger to include the node name.
     NodeFullName = atom_to_list(node()),
     NodeShortName = string:substr(NodeFullName, 1, string:chr(NodeFullName, $@) - 1),
     case log4erl:change_format(file, "[" ++ NodeShortName  ++ "][%L] %j %t %l%n") of
         {error, E0} -> io:format("*** Error changing logger format: ~p~n", [E0]);
         ok -> ok
     end,
-    case log4erl:change_filename(file, NodeShortName) of
-        {error, E1} -> io:format("*** Error changing logger filename to ~p. (~p)~n", [NodeShortName, E1]);
-        ok -> ok
+
+    %% If configured to do so, modify the logger to include the node name.
+    case SeparateLog of
+        true ->
+            case log4erl:change_filename(file, NodeShortName) of
+                {error, E1} -> io:format("*** Error changing logger filename to ~p. (~p)~n", [NodeShortName, E1]);
+                ok -> ok
+            end;
+        _ -> ok
     end,
+
+    %% Write the pid to a file
+    PidFile = filename:join([PrivDir, "pid", lists:concat([string:sub_word(atom_to_list(node()), 1, $@), ".pid"])]),
+    file:write_file(PidFile, os:getpid()),
 
     %% Load the webmachine dispatch config.
     DispatchContent =

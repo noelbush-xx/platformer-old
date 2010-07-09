@@ -3,7 +3,7 @@
 
 -module(platformer.core.user).
 
--export([create/0, delete/1, exists/1]).
+-export([create/0, create/2, delete/1, exists/1, is_valid_id/1]).
 
 -import(httpc).
 -import(lists).
@@ -51,7 +51,7 @@ exists(Id, [#pfnode{} = Node|Nodes]) ->
     case node:is_me(Node) of
         false ->
             case httpc:request(head, {lists:concat([node:get_address(Node), "/user/", Id]),
-                                      [{"X-Platformer-Node", node:my_address()}]}, [], []) of
+                                      [{"X-Platformer-Message-Source", node:my_address()}]}, [], []) of
                 {ok, {{_, Status, _}, _, _}} ->
                     case Status of
                         200 -> {true, active};
@@ -65,18 +65,27 @@ exists(Id, [#pfnode{} = Node|Nodes]) ->
 
 exists(_Id, []) -> {false, unknown}.
 
-
-%% @spec create() -> {Id, Path}
+%% @doc Create a brand new user.
+%%
+%% @spec create() -> {string(), string()}
 create() ->
-    IdString = string:concat("platformer_user_", uuid:to_string(uuid:v4())),
+    log4erl:debug("Creating new user with new propagation envelope."),
+    IdString = string:concat("platformer_user_", util:uuid()),
+    create(IdString, {util:uuid(), util:get_param(propagation_priority, 3), node:my_address()}).
+
+%% @doc Create a local record of a user that already exists somewhere else.
+%%
+%% @spec create(string(), {string(), integer(), string()}) -> {string(), string()}
+create(IdString, {_Token, Priority, Source} = Envelope) ->
     Id = list_to_binary(IdString),
-    User = #pfuser{id=Id, status=active, last_modified=util:now_int()},
+    User = #pfuser{id=Id, status=active, last_modified=util:now_int(), source=Source},
     case db:write(User) of
         {atomic, ok} ->
-            log4erl:info("Propagating new user ~s", IdString),
-            %%spawn_link(platformer.core.liaison, propagate, ?record_to_json(pfuser, User)),
-            {Id, string:concat("/userid/", IdString)};
+            log4erl:debug("Created new user ~s with priority ~B.", [IdString, Priority]),
+            spawn_link(platformer.core.liaison, propagate, ["user", IdString, Envelope]),
+            {Id, string:concat("/user/", IdString)};
         {aborted, Error} ->
+            log4erl:debug("Error in creating user ~s: ~p", [IdString, Error]),
             throw(Error)
     end.
 
@@ -92,3 +101,8 @@ delete(Id) ->
         {aborted, _} ->
             false
     end.
+
+is_valid_id(Id) ->
+    string:left(Id, 16) =:= "platformer_user_"
+        andalso
+        util:is_valid_uuid(string:substr(Id, 17)).

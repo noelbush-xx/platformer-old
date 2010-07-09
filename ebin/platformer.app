@@ -11,7 +11,7 @@
              %% Webmachine resources
              platformer.webmachine.ping_resource,
              platformer.webmachine.node_resource,
-             platformer.webmachine.user_resource,
+             platformer.webmachine.memo_resource,
              platformer.webmachine.common,
              platformer.webmachine.error_handler,
              %% Core application modules

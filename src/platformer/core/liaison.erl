@@ -6,7 +6,7 @@
 %%
 -module(platformer.core.liaison).
 
--export([announce_self/0, propagate/1, propagate/2, seek_peers/0]).
+-export([announce_self/0, propagate/3, propagate/4, seek_peers/0]).
 
 -import(httpc).
 -import(jsonerl).
@@ -27,17 +27,17 @@ announce_self() ->
                                        host=list_to_binary(util:get_param(ip)),
                                        port=util:get_param(port)})),
     Nodes = node:get_list(),
-    log4erl:info("Announcing myself to ~B peer node(s).", [length(Nodes)]),
+    %% log4erl:debug("Announcing myself to ~B peer node(s).", [length(Nodes)]),
     announce_self(Json, Nodes).
 
 announce_self(Json, [Node|Rest])->
     Address = node:get_address(Node),
-    log4erl:info("Announcing myself to node ~p.", [Address]),
+    %% log4erl:debug("Announcing myself to node ~p.", [Address]),
     httpc:request(post, {Address ++ "/node", [], "text/javascript", Json}, [], []),
     announce_self(Json, Rest);
 
 announce_self(_Json, [])->
-    log4erl:info("No more nodes to whom to announce myself."),
+    %% log4erl:debug("No more nodes to whom to announce myself."),
     ok.
 
 %% Ask other nodes for their node lists.  We check with
@@ -51,27 +51,50 @@ seek_peers() ->
 
 seek_peers([Node|Rest]) ->
     Address = node:get_address(Node),
-    log4erl:info("Asking node ~p for its node list.", [Address]),
+    %% log4erl:debug("Asking node ~p for its node list.", [Address]),
     case httpc:request(Address ++ "/node/list") of
         {ok, {{_, 200, _}, _, Body}} ->
+            %% log4erl:debug("Retrieved node list from ~p; increasing rating.", [Address]),
+            node:adjust_rating(Node, 1),
             {{<<"nodes">>, Peers}} = jsonerl:decode(Body),
             node:create_from_list(Peers);
         _ ->
-            log4erl:info("Could not retrieve node list from ~p.~n", [Address])
+            %% log4erl:debug("Could not retrieve node list from ~p; reducing rating.", [Address]),
+            node:adjust_rating(Node, -1)
     end,
     seek_peers(Rest);
 seek_peers([]) ->
-    log4erl:info("No more nodes to query for peers."),
+    %% log4erl:debug("No more nodes to query for peers."),
     ok.
 
-propagate(Json) ->
+%% @doc Propagate an item with no body.
+%%
+%% @spec propagate(string(), string(), {string(), string(), string()}) -> ok
+propagate(Type, Id, {_Token, _Priority, _Source} = Envelope) ->
+    propagate(Type, Id, undefined, Envelope).
+
+%% @doc Propagate an item with a body.
+%%
+%% @spec propagate(string(), string(), string(), {string(), string(), string()}) -> ok
+propagate(Type, Id, Body, {_Token, Priority, _Source} = Envelope) ->
+    Nodes = node:get_random_list({count, Priority}),
+    log4erl:debug("Propagating priority ~B ~s ~s to ~B node(s).", [Priority, Type, Id, length(Nodes)]),
+    propagate(Nodes, Type, Id, Body, Envelope).
+
+propagate([Node|Rest], Type, Id, Body, {Token, Priority, Source} = Envelope) ->
+    Address = node:get_address(Node),
+    log4erl:debug("Propagating ~s to node ~s.", [Type, Address]),
+    Uri = lists:concat([Address, "/", Type, "/", Id]),
+    Headers = [{"X-Platformer-Message-Token", Token},
+               {"X-Platformer-Message-Priority", Priority},
+               {"X-Platformer-Message-Source", Source}],
+    case Body of
+        undefined ->
+            httpc:request(put, {Uri, Headers, "text/plain", ""}, [], []);
+        Body ->
+            httpc:request(put, {Uri, Headers, "text/javascript", Body}, [], [])
+    end,
+    propagate(Rest, Type, Id, Body, Envelope);
+propagate([], Type, Id, _, _) ->
+    log4erl:debug("No more nodes to which to propagate ~s ~s.", [Type, Id]),
     ok.
-    %%propagate(Json, util:get_param(propagation_age)).
-
-propagate(Json, Age) ->
-    propagate(node:get_random_list(Age), Json, Age).
-
-propagate([Node|Rest], Json, Age) ->
-    log4erl:info("Propagating to node ~s.", [node:get_address(Node)]),
-    propagate(Rest, Json, Age);
-propagate([], _, _) -> ok.

@@ -11,13 +11,15 @@ USAGE="usage: $0 [options] {start|stop|restart|status}"
 # Defaults
 PORT=8000
 CONFIG="platformer_node"
+LOG_CONFIG="log-errors"
 
 # Get options and command
-set -- `getopt --options p:rBc:h --longoptions port:,reset-db,background,config:,help --unquoted -- "$@"`
+set -- `getopt --options p:rBc:L:h --longoptions port:,reset-db,background,config:,log-config:,help --unquoted -- "$@"`
 while [ $# -gt 0 ]; do
     case "$1" in
         -B|--background)  BACKGROUND=true; DETACHED="-detached";;
         -c|--config)      CONFIG=$2; shift;;
+        -L|--log-config)  LOG_CONFIG=$2; shift;;
         -p|--port)        PORT=$2; PORTSPEC="-platformer port $PORT"; shift;;
         -r|--reset-db)    RESET_DB=" reset-db";;
         -h|--help)
@@ -27,6 +29,7 @@ while [ $# -gt 0 ]; do
                           echo "-r|--reset-db          reset the database on startup"
                           echo "-B|--background        run in the background (no shell)"
                           echo "-c|--config=NAME       read application configuration from ./priv/NAME.config (default: $CONFIG)"
+                          echo "-L|--log-config=NAME   read logging configuration from ./priv/NAME.config (default: $LOG_CONFIG)"
                           echo "-h|--help              print this help message"
                           echo
                           echo "command (specify one):"
@@ -60,7 +63,7 @@ fi
 PIDFILE=$PRIV_DIR/pid/$NODENAME.pid
 
 # Arguments to erl
-ARGUMENTS="-pa $CODE_PATH -boot start_sasl -s reloader -s platformer -sname $NODENAME -mnesia dir '$PRIV_DIR/db/Mnesia.$NODENAME' -config $PRIV_DIR/$CONFIG $PORTSPEC $DETACHED $PLAIN_ARGS"
+ARGUMENTS="-pa $CODE_PATH -boot start_sasl -s reloader -s platformer -sname $NODENAME -mnesia dir '$PRIV_DIR/db/Mnesia.$NODENAME' -config $PRIV_DIR/$CONFIG -config $PRIV_DIR/$LOG_CONFIG $PORTSPEC $DETACHED $PLAIN_ARGS"
 
 # Start and stop commands using start-stop-daemon
 DAEMON_START_CMD="start-stop-daemon --start --quiet --oknodo --exec $COMMAND --chdir $BASE_DIR --pidfile $PIDFILE -- $ARGUMENTS"

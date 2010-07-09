@@ -1,3 +1,11 @@
 Welcome to Platformer.
 
 What is here at this moment is still in formation.  I'm building up an example implementation of a Platformer node using webmachine (http://bitbucket.org/basho/webmachine), and a basic web client for testing it.  Once this is more fleshed out I'll document what's going on here.
+
+Custom Headers
+--------------
+These are the custom HTTP headers involved in some Platformer messages between nodes or between nodes and clients:
+
+X-Platformer-Message-Token:      A v4 uuid used to track the history of a message as it is passed along
+X-Platformer-Message-Priority:   An integer counting down from (TBD: 3?) used in message propagation
+X-Platformer-Message-Source:     A string used to identify a node that is making a request to another node

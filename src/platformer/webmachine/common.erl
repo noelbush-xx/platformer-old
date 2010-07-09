@@ -5,7 +5,7 @@
 %% This module contains functions used by different platformer resources.
 -module(platformer.webmachine.common).
 
--export([valid_extended_query_request/1, postprocess_rd/1]).
+-export([valid_propagation_envelope/1, postprocess_rd/1]).
 
 -import(wrq).
 
@@ -16,26 +16,37 @@
 
 -include_lib("platformer.hrl").
 
-%% Validate a webmachine #wm_reqdata() term for a Platformer query:
-%% - Ensure there is an X-Platformer-Query-Token request header
-%% - Ensure there is an X-Platformer-Query-Age request header
+%% @doc Validates a webmachine <code>#wm_reqdata()</code> term for a Platformer query:
+%%  <ul>
+%%    <li>Ensure there is an X-Platformer-Message-Token request header</li>
+%%    <li>Ensure there is an X-Platformer-Message-Priority request header</li>
+%%  </ul>
 %% Returns true|false if valid and modified RD.
-valid_extended_query_request(ReqData) ->
-    verify_headers(["X-Platformer-Query-Token", "X-Platformer-Query-Age"], ReqData).
+%%
+%% @spec valid_propagation_envelope(#wm_reqdata()) -> {bool(), #wm_reqdata()}
+valid_propagation_envelope(ReqData) ->
+    verify_headers(["X-Platformer-Message-Token", "X-Platformer-Message-Priority, X-Platformer-Message-Source"], ReqData).
 
 verify_headers(Headers, ReqData) ->
     verify_headers(Headers, true, ReqData).
 
 verify_headers([Header|Rest], Valid, ReqData)->
-    verify_headers(Rest, Valid and (wrq:get_req_header(Header, ReqData) =/= undefined), ReqData);
-verify_headers([], Valid, _ReqData) ->
-    Valid.
+    case wrq:get_req_header(Header, ReqData) of
+        undefined -> verify_headers(Rest, false, wrq:append_to_response_body("Missing request header " ++ Header, ReqData));
+        _ -> verify_headers(Rest, Valid, ReqData)
+    end;
+verify_headers([], Valid, ReqData) ->
+    {Valid, ReqData}.
 
-%% Process a webmachine #wm_reqdata() term in some standard ways:
-%% - Check for an X-Platformer-Node request header and add the specified server
-%% - Add the response header Access-Control-Allow-Origin: *
+%% @doc Process a webmachine #wm_reqdata() term in some standard ways:
+%%  <ul>
+%%    <li>Check for an <code>X-Platformer-Message-Source</code> request header and add the specified server</li>
+%%    <li>Add the response header <code>Access-Control-Allow-Origin: *</code></li>
+%%  </ul>
+%%
+%% @spec postprocess_rd(wm_reqdata()) -> wm_reqdata()
 postprocess_rd(ReqData) ->
-    case wrq:get_req_header("X-Platformer-Node", ReqData) of
+    case wrq:get_req_header("X-Platformer-Message-Source", ReqData) of
         undefined -> true;
         Address ->
             case node:get(util:md5(Address)) of
