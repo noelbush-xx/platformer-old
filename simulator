@@ -110,7 +110,7 @@ start_nodes([Port|Rest], Host) ->
                                               " -s reloader -s platformer",
                                               " -mnesia dir '\"priv/db/Mnesia.", NodeName, "\"'",
                                               " -config priv/platformer_node",
-                                              " -config priv/log-quiet",
+                                              " -config priv/log-errors",
                                               " -platformer port ", Port,
                                               " -detached",
                                               " -setcookie simulator -- reset-db"])),

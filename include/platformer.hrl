@@ -24,6 +24,13 @@
 %% A subset of what's in a full node record, for announcing self.
 -record(nodespec, {scheme,       % http | https
                    host,         % hostname (e.g., example.com)
-                   port}).       % port (e.g., 8000)
+                   port          % port (e.g., 8000)
+                  }).
 
+
+%% A set of information that follows around a memo item when it is propagated.
+-record(envelope, {token,        % a (reasonably) unique string to identify a message
+                   priority,     % an integer indicating how much farther a message should propagate
+                   source        % the origin of the message
+                  }).
 

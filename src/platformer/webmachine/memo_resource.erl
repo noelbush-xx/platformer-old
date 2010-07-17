@@ -12,6 +12,7 @@
          content_types_accepted/2,
          content_types_provided/2, create_path/2,
          delete_resource/2, delete_completed/2,
+         forbidden/2, is_conflict/2,
          malformed_request/2, moved_permanently/2,
          moved_temporarily/2, options/2,
          post_is_create/2, previously_existed/2,
@@ -59,7 +60,11 @@ allow_missing_post(ReqData, Context) ->
 
 %% @doc See {@wmdocs}
 allowed_methods(ReqData, Context) ->
-    {['DELETE', 'HEAD', 'OPTIONS', 'POST', 'PUT'], ReqData, Context}.
+    {case Context#context.id of
+         undefined -> ['OPTIONS', 'POST'];
+         _ -> ['DELETE', 'HEAD', 'OPTIONS', 'PUT']
+     end,
+     ReqData, Context}.
 
 %% @doc See {@wmdocs}
 content_types_accepted(ReqData, Context) ->
@@ -74,59 +79,87 @@ content_types_provided(ReqData, Context) ->
 
 %% @doc See {@wmdocs}
 create_path(ReqData, Context) ->
-    {Id, Path} = apply(Context#context.module, create, []),
+    {Id, Path} = apply(Context#context.module, create, [Context#context.envelope]),
     {Path, wrq:set_resp_header("Location", Path, ReqData), Context#context{id=Id, path=Path}}.
 
 %% @doc See {@wmdocs}
 delete_completed(ReqData, Context) ->
+    log4erl:debug("Deleted ~s ~s.", [Context#context.type, Context#context.id]),
     {true, ReqData, Context}.
 
 %% @doc See {@wmdocs}
-delete_resource(ReqData, Context) ->
-    {apply(Context#context.module, delete, [list_to_binary(Context#context.id)]), ReqData, Context}.
+delete_resource(ReqData, #context{envelope=Envelope} = Context) ->
+    log4erl:debug("Deleting ~s ~s, as per propagation request with priority ~B.",
+                  [Context#context.type, Context#context.id, Envelope#envelope.priority]),
+    apply(Context#context.module, delete, [Context#context.id, Envelope]),
+    {true, ReqData, Context}.
 
-%% @doc See {@wmdocs}
+%% @doc Handle creation or update of items from PUT requests.
+%%
+%% See {@wmdocs}
+is_conflict(ReqData, Context) ->
+    case wrq:method(ReqData) of
+        % If the item already exists, we update it; otherwise, we
+        % create it and set a Location header so a 201 response will
+        % be returned.
+        'PUT' ->
+            case Context#context.status of
+                'active' ->
+                    log4erl:debug("PUT to existing ~s; no updating implemented at present.", [Context#context.type]),
+                    {false, ReqData, Context};
+                'unknown' ->
+                    Priority = (Context#context.envelope)#envelope.priority,
+                    CreateArgs =
+                        if
+                            Priority == 0 ->
+                                log4erl:debug("PUT of ~s has priority 0; no further propagation.", [Context#context.type]),
+                                [Context#context.id];
+                            Priority > 0 ->
+                                log4erl:debug("PUT of ~s has priority ~B; will be propagated.", [Context#context.type, Priority]),
+                                [Context#context.id, (Context#context.envelope)#envelope{priority=Priority - 1}]
+                        end,
+                    {_, Path} = apply(Context#context.module, create, CreateArgs),
+                    {false, wrq:set_resp_header("Location", Path, ReqData), Context}
+            end;
+        _ -> {false, ReqData, Context}
+    end.
+
+%% @doc Check syntax of ids for PUT requests to ensure validity.
+%%
+%% See {@wmdocs}
+forbidden(ReqData, Context) ->
+    case wrq:method(ReqData) of
+        'PUT' ->
+            case apply(Context#context.module, is_valid_id, [Context#context.id]) of
+                true ->
+                    {false, ReqData, Context};
+                false ->
+                    {true, wrq:append_to_response_body(Context#context.id ++ " is not a valid id for this type of resource.", ReqData), Context}
+            end;
+        _ -> {false, ReqData, Context}
+    end.
+
+%% @doc Any request is malformed if it contains a request body.  We
+%% also validate and capture a propagation envelope if one is present;
+%% if one is not present, we create it.
+%%
+%% See {@wmdocs}
 malformed_request(ReqData, Context) ->
-    {MF, NewReqData, NewContext} =
-        case wrq:method(ReqData) of
-            % A HEAD or DELETE request is malformed if it is missing an id.
-            M when M =:= 'HEAD' orelse M =:= 'DELETE' ->
-                case Context#context.id of
-                    undefined -> 
-                        {true,
-                         wrq:append_to_response_body("No id specified.", ReqData),
-                         Context};
-                    _ ->
-                        {false, ReqData, Context}
-                end;
-            % An OPTIONS request can never be malformed.
-            'OPTIONS' ->
-                {false, ReqData, Context};
-            % A POST is malformed if it contains a request body or does not specify an id.
-            'POST' ->
-                {MF1, NRD1, NC1} =
-                    case wrq:req_body(ReqData) of
-                        <<>> -> {false, ReqData, Context};
-                        _ -> {true, wrq:append_to_response_body("Do not include a request body.", ReqData), Context}
-                    end,
-                %% Be sure the path is right.
-                case Context#context.id of
-                    undefined -> {false and MF1, NRD1, NC1};
-                    _ -> {true, wrq:append_to_response_body("Do not POST to an existing resource.", NRD1), NC1}
-                end;
-            % A PUT is malformed if it is missing an id and or does not have valid message propagation headers.
-            'PUT' ->
-                case Context#context.id of
-                    undefined -> {true, wrq:append_to_response_body("Missing id.", ReqData), Context};
-                    Id ->
-                        {ValidHeaders, NRD1} = common:valid_propagation_envelope(ReqData),
-                        case apply(Context#context.module, is_valid_id, [Id]) of
-                            false -> {true, wrq:append_to_response_body(Id ++ " is not a valid id.", NRD1), Context};
-                            true -> {not ValidHeaders, NRD1, Context}
-                        end
-                end
+    {Invalid, Envelope, NRD2} = 
+        case common:valid_propagation_envelope(ReqData, false, true) of
+            {true, Env, NRD1} -> {false, Env, NRD1};
+            true -> {false, common:new_propagation_envelope(), ReqData};
+            {false, NRD1} -> {true, common:new_propagation_envelope(), NRD1}
         end,
-    {MF, common:postprocess_rd(NewReqData), NewContext}.
+    NC1 = Context#context{envelope = Envelope},
+    {MF, NRD3, NC2} =
+        case wrq:req_body(NRD2) of
+            <<>> -> {Invalid or false, NRD2, NC1};
+            _ -> {true,
+                  wrq:append_to_response_body("Do not include a request body.", NRD2),
+                  NC1}
+        end,
+    {MF, common:postprocess_rd(NRD3), NC2}.
 
 %% @doc See {@wmdocs}
 moved_permanently(ReqData, Context) ->
@@ -136,19 +169,26 @@ moved_permanently(ReqData, Context) ->
 moved_temporarily(ReqData, Context) ->
     {false, ReqData, Context}.
 
-%% @doc See {@wmdocs}
+%% @doc In addition to just supplying allowed methods and headers, we
+%%  also check the headers that are being sent, since browsers doing a
+%%  "pre-flight" for some methods will first send along an OPTIONS
+%%  request to see if the allowed headers match the ones that the user
+%%  wants to send.  We'd like them to get a useful message if there's
+%%  a problem, instead of just silently failing.
+%%
+%% See {@wmdocs}
 options(ReqData, Context) ->
-    {lists:flatten(
-       [{"Access-Control-Allow-Origin", "*"},
-        case wrq:path_info(id, ReqData) of
-            undefined ->
-                {"Access-Control-Allow-Methods", "OPTIONS, POST, PUT"};
-            _ ->
-                [{"Access-Control-Allow-Methods", "HEAD, DELETE, OPTIONS"},
-                 {"Access-Control-Allow-Headers",
-                  "X-Platformer-Message-Token, X-Platformer-Message-Priority, X-Platformer-Message-Source"}]
-        end]),
-     ReqData, Context}.
+    AllowedHeaders = 
+        case Context#context.id of
+            undefined -> ["X-Platformer-Memo-Token", "X-Platformer-Memo-Priority"];
+            _ -> ["X-Platformer-Memo-Token", "X-Platformer-Memo-Priority", "X-Platformer-Memo-Source"]
+        end,
+    {AllowedMethods, _, _} = allowed_methods(ReqData, Context),
+    {[{"Access-Control-Allow-Origin", "*"},
+      {"Access-Control-Allow-Methods", string:join(lists:map(fun(A) -> atom_to_list(A) end, AllowedMethods), ", ")},
+      {"Access-Control-Allow-Headers", string:join(AllowedHeaders, ", ")}],
+     common:support_preflight(AllowedHeaders, ReqData),
+     Context}.
 
 %% @doc See {@wmdocs}
 post_is_create(ReqData, Context) ->
@@ -175,20 +215,22 @@ previously_existed(ReqData, Context) ->
      ReqData,
      Context}.
 
-%% @doc See {@wmdocs}
+%% @doc Here is where we look for a propagation envelope, and if it
+%% exists, capture it in the Context.  If it does not exist, we create
+%% a new one.
+%%
+%% See {@wmdocs}
 resource_exists(ReqData, Context) ->
-    {Exists, NewContext} =
-        case wrq:method(ReqData) of
-            M when M =:= 'DELETE' orelse M =:= 'HEAD' ->
-                %% Only check other servers if there is a valid propagation envelope.
-                {Valid, _} = common:valid_propagation_envelope(ReqData),
-                {Found, Status} = 
-                    apply(Context#context.module, exists, [{list_to_binary(Context#context.id), Valid}]),
-                {Found, Context#context{status=Status}};
-            _ ->
-                {false, Context}
-        end,
-    {Exists, ReqData, NewContext}.
+    case wrq:method(ReqData) of
+        M when M =:= 'DELETE' orelse M =:= 'HEAD' ->
+            {Found, Status} = apply(Context#context.module, exists, [list_to_binary(Context#context.id), Context#context.envelope]),
+            {Found, ReqData, Context#context{status=Status}};
+        'PUT' ->
+            {Found, Status} = apply(Context#context.module, exists, [list_to_binary(Context#context.id)]),
+            {Found, ReqData, Context#context{status=Status}};
+        _ ->
+            {false, ReqData, Context}
+    end.
 
 %% @doc We use this function, our earliest access into webmachine's HTTP processing pipeline,
 %%  as our way to extract the type of memo being handled.  The first component of the path
@@ -213,27 +255,6 @@ to_json(ReqData, Context) ->
             {true,
              wrq:set_resp_body(jsonerl:encode({{Context#context.type, {{id, Context#context.id}}}}), ReqData),
              Context};
-        % This seems undesirable, but maybe it's how we have to match the webmachine flow?
-        % For a PUT, we create the item right here, and add a Location header so it will
-        % send back a 201 response.
-        'PUT' ->
-            % The presence of these headers has already been verified in malformed_request().
-            Token = wrq:get_req_header("X-Platformer-Message-Token", ReqData),
-            Priority = lists:max([list_to_integer(wrq:get_req_header("X-Platformer-Priority", ReqData)),
-                                  util:get_param(propagation_priority, 3)]),
-            Source = wrq:get_req_header("X-Platformer-Message-Source", ReqData),
-            if
-                Priority == 0 ->
-                    log4erl:debug("Received PUT id with priority 0; nothing to create."),
-                    {true, ReqData, Context};
-                % otherwise it must be less than or equal to the max. priority (see above)
-                true ->
-                    log4erl:debug("Received PUT id with priority ~B; creating a new one.", [Priority]),
-                    {_, Path} = apply(Context#context.module, create, [Context#context.id, {Token, Priority - 1, Source}]),
-                    {true,
-                     wrq:set_resp_header("Location", Path, ReqData),
-                     Context}
-            end;
         _ ->
             {<<>>, ReqData, Context}
     end.

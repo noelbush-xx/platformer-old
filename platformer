@@ -1,7 +1,7 @@
 #!/bin/bash
-COMMAND="/usr/bin/erl"
-CODE_PATH="$PWD/ebin $PWD/include $PWD/deps/*/ebin"
+ERL="/usr/bin/erl"
 BASE_DIR=$(cd `dirname $0` && pwd)
+CODE_PATH="$BASE_DIR/ebin $BASE_DIR/include $BASE_DIR/deps/*/ebin"
 PRIV_DIR="$BASE_DIR/priv"
 
 USAGE="usage: $0 [options] {start|stop|restart|status}"
@@ -14,7 +14,7 @@ CONFIG="platformer_node"
 LOG_CONFIG="log-errors"
 
 # Get options and command
-set -- `getopt --options p:rBc:L:h --longoptions port:,reset-db,background,config:,log-config:,help --unquoted -- "$@"`
+set -- `getopt --options p:rBc:L:qh --longoptions port:,reset-db,background,config:,log-config:,quiet,help --unquoted -- "$@"`
 while [ $# -gt 0 ]; do
     case "$1" in
         -B|--background)  BACKGROUND=true; DETACHED="-detached";;
@@ -22,6 +22,7 @@ while [ $# -gt 0 ]; do
         -L|--log-config)  LOG_CONFIG=$2; shift;;
         -p|--port)        PORT=$2; PORTSPEC="-platformer port $PORT"; shift;;
         -r|--reset-db)    RESET_DB=" reset-db";;
+        -q|--quiet)       QUIET="quiet";;
         -h|--help)
                           echo $USAGE;
                           echo "options (specify any or none):"
@@ -30,6 +31,7 @@ while [ $# -gt 0 ]; do
                           echo "-B|--background        run in the background (no shell)"
                           echo "-c|--config=NAME       read application configuration from ./priv/NAME.config (default: $CONFIG)"
                           echo "-L|--log-config=NAME   read logging configuration from ./priv/NAME.config (default: $LOG_CONFIG)"
+                          echo "-q|--quiet             don't print any messages about starting and stopping"
                           echo "-h|--help              print this help message"
                           echo
                           echo "command (specify one):"
@@ -38,6 +40,7 @@ while [ $# -gt 0 ]; do
                           echo "restart                restart the specified Platformer node"
                           echo "status                 check whether the specified Platformer node is running"
                           echo "connect                connect to the specified Platformer node"
+                          echo "killall                attempt to forcefully kill all Platformer nodes that are running"
                           shift
                           exit 0;;
         --)               shift; break;;
@@ -52,6 +55,7 @@ if [ -n "$PORTSPEC" ]; then
 else
     NODENAME="platformer"
 fi
+FULL_NODENAME=$NODENAME@$HOSTNAME
 
 # Construct any plain arguments to erl
 PLAIN_ARGS="$RESET_DB"
@@ -66,51 +70,80 @@ PIDFILE=$PRIV_DIR/pid/$NODENAME.pid
 ARGUMENTS="-pa $CODE_PATH -boot start_sasl -s reloader -s platformer -sname $NODENAME -mnesia dir '$PRIV_DIR/db/Mnesia.$NODENAME' -config $PRIV_DIR/$CONFIG -config $PRIV_DIR/$LOG_CONFIG $PORTSPEC $DETACHED $PLAIN_ARGS"
 
 # Start and stop commands using start-stop-daemon
-DAEMON_START_CMD="start-stop-daemon --start --quiet --oknodo --exec $COMMAND --chdir $BASE_DIR --pidfile $PIDFILE -- $ARGUMENTS"
-DAEMON_STOP_CMD="start-stop-daemon --stop --quiet --retry 5 --oknodo --pidfile $PIDFILE"
+DAEMON_START_CMD="start-stop-daemon --chdir $BASE_DIR --start --quiet --oknodo --exec $ERL --pidfile $PIDFILE -- $ARGUMENTS"
+DAEMON_STOP_SCRIPT="rpc:call($FULL_NODENAME, platformer, stop, []), rpc:cast($FULL_NODENAME, erlang, halt, [])."
+DAEMON_STOP_CMD="$ERL -sname local -hidden"
 
 # Process command
 case "$@" in
     start)
-        if [ -n $BACKGROUND ]; then
-            log_begin_msg "Starting Platformer node $NODENAME"
+        if [ -n "$BACKGROUND" ] && [ -z "$QUIET" ]; then
+            log_begin_msg "Starting Platformer node $FULL_NODENAME"
         fi
         $DAEMON_START_CMD
-        if [ -n $BACKGROUND ]; then
+        if [ -n "$BACKGROUND" ] && [ -z "$QUIET" ]; then
             log_end_msg $?
         fi
         ;;
     stop)
-        log_begin_msg "Stopping Platformer node $NODENAME"
-        $DAEMON_STOP_CMD
-        rm $PIDFILE
-        log_end_msg $?
+        if [ -z "$QUIET" ]; then
+            log_begin_msg "Stopping Platformer node $FULL_NODENAME"
+        fi
+        echo "$DAEMON_STOP_SCRIPT" | $DAEMON_STOP_CMD 2>&1 > /dev/null && \
+        rm -f $PIDFILE
+        if [ -z "$QUIET" ]; then
+            log_end_msg $?
+        fi
         ;;
     restart)
-        log_begin_msg "Restarting Platformer node $NODENAME"
-	if $DAEMON_STOP_CMD; then
-	    $DAEMON_START_CMD
-	fi
-	log_end_msg $?
-	;;
+        if [ -z "$QUIET" ]; then
+            log_begin_msg "Restarting Platformer node $FULL_NODENAME"
+        fi
+	   if $DAEMON_STOP_CMD; then
+	       $DAEMON_START_CMD
+	   fi
+        if [ -z "$QUIET" ]; then
+	       log_end_msg $?
+        fi
+	   ;;
     status)
-	echo -n "Status of Platformer node: "
-	if [ ! -r "$PIDFILE" ]; then
-	    echo "$NODENAME is not running."
-	    exit 3
-	fi
-	read pid < "$PIDFILE"
+        echo -n "Status of Platformer node: "
+	   if [ ! -r "$PIDFILE" ]; then
+	      echo "$FULL_NODENAME is not running."
+	      exit 3
+	   fi
+	   read pid < "$PIDFILE"
         if ps -p "$pid" > /dev/null 2>&1; then
-	    echo "$NODENAME is running."
-	    exit 0
-	else
-	    echo "$NODENAME is not running but pidfile $PIDFILE exists."
-	    exit 1
-	fi
-	;;
+	      echo "$FULL_NODENAME is running."
+	      exit 0
+	   else
+	      echo "$FULL_NODENAME is not running but pidfile $PIDFILE exists."
+	      exit 1
+	   fi
+	   ;;
     connect)
-        $COMMAND -sname local -remsh $NODENAME@$HOSTNAME
+        $ERL -sname local -remsh $FULL_NODENAME
         ;;       
+    killall)
+        if [ -z "$QUIET" ]; then
+            echo "Attempting to kill all Platformer nodes."
+        fi
+        for pidfile in `find $PRIV_DIR/pid -type f`; do
+            pid=`cat $pidfile`
+            if [ -z "$QUIET" ]; then
+                echo -n "  ...pid $pid...."
+            fi
+            kill $pid
+            if [ -z "$QUIET" ]; then
+                if [ $? -eq 0 ]; then
+                    echo "success."
+                else
+                    echo "failed."
+                fi
+            fi
+            rm $pidfile
+        done
+        ;;
     *)
         echo >&2 $USAGE; exit 1;;
 esac

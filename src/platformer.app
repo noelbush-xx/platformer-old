@@ -15,8 +15,8 @@
              platformer.webmachine.common,
              platformer.webmachine.error_handler,
              %% Core application modules
-             platformer.core.launcher,
              platformer.core.db,
+             platformer.core.memo,
              platformer.core.node,
              platformer.core.user,
              platformer.core.liaison,

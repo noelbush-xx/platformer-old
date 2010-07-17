@@ -6,7 +6,10 @@
 -import(error_logger).
 -import(io_lib).
 
+-import(log4erl).
+
 render_error(Code, Req, Reason) ->
+    %%log4erl:debug("ERROR.~nCode: ~p~nReq: ~p~nReason: ~p~n", [Code, Req, Reason]),
     case Req:has_response_body() of
         {true,_} -> Req:response_body();
         {false,_} -> render_error_body(Code, Req:trim_state(), Reason)

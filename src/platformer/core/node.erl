@@ -20,11 +20,11 @@
 -export([adjust_rating/2, create/1, create_from_list/1, get/1,
          delete/1, load_preconfigured/0, my_address/0, get_address/1,
          get_id/1, get_list/0, get_random_list/1, get_random_list/2,
-         get_path/1, is_me/1]).
+         get_path/1, is_me/1, announce_self/0, seek_peers/0]).
 
 %% @doc Deletes a node identified by an id.  Return value indicates
 %% whether the operation succeeded.
-
+%%
 %% @spec delete(binary()) -> bool()
 delete(Id) ->
     F = fun() ->
@@ -141,11 +141,8 @@ get_list() ->
 %% @doc Retrieves a node from its id, or from a constructed
 %% record that contains an id.
 %%
-%% @spec get(string() | pfnode()) -> NodeRecord | not_found
-%% get(#pfnode{} = Node) ->
-%%     node:get(binary_to_list(Node#pfnode.id));
+%% @spec get(string()) -> NodeRecord | not_found
 get(Id) ->
-    .io:format("You ask me to get ~p~n", [Id]),
     Result = db:find(qlc:q([X || X <- mnesia:table(pfnode), X#pfnode.id == list_to_binary([Id])])),
     case length(Result) of
         1 ->
@@ -228,3 +225,51 @@ adjust_rating(Node, Adjustment) ->
         NewRating =:= CurrentRating ->
             ok
     end.
+
+%% @doc Announce this node to other known nodes.
+announce_self() ->
+    Json = list_to_binary(
+             ?record_to_json(nodespec,
+                             #nodespec{scheme=util:get_param(scheme),
+                                       host=list_to_binary(util:get_param(ip)),
+                                       port=util:get_param(port)})),
+    Nodes = node:get_list(),
+    %% log4erl:debug("Announcing myself to ~B peer node(s).", [length(Nodes)]),
+    announce_self(Json, Nodes).
+
+announce_self(Json, [Node|Rest])->
+    Address = node:get_address(Node),
+    %% log4erl:debug("Announcing myself to node ~p.", [Address]),
+    httpc:request(post, {Address ++ "/node", [], "text/javascript", Json}, [], []),
+    announce_self(Json, Rest);
+
+announce_self(_Json, [])->
+    %% log4erl:debug("No more nodes to whom to announce myself."),
+    ok.
+
+%% @doc Ask other nodes for their node lists.  We check with
+%% the 25% least recently contacted nodes.
+seek_peers() ->
+    Nodes = lists:sort(fun(A, B) ->
+                               A#pfnode.last_modified < B#pfnode.last_modified end,
+                       node:get_list()),
+    Sublist = lists:sublist(Nodes, trunc(length(Nodes) * 0.25 + 1)),
+    seek_peers(Sublist).
+
+seek_peers([Node|Rest]) ->
+    Address = node:get_address(Node),
+    %% log4erl:debug("Asking node ~p for its node list.", [Address]),
+    case httpc:request(Address ++ "/node/list") of
+        {ok, {{_, 200, _}, _, Body}} ->
+            %% log4erl:debug("Retrieved node list from ~p; increasing rating.", [Address]),
+            node:adjust_rating(Node, 1),
+            {{<<"nodes">>, Peers}} = jsonerl:decode(Body),
+            node:create_from_list(Peers);
+        _ ->
+            %% log4erl:debug("Could not retrieve node list from ~p; reducing rating.", [Address]),
+            node:adjust_rating(Node, -1)
+    end,
+    seek_peers(Rest);
+seek_peers([]) ->
+    %% log4erl:debug("No more nodes to query for peers."),
+    ok.

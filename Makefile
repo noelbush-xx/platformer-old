@@ -16,6 +16,7 @@ deps:
 clean: traceclean
 	@echo "removing:"
 	@./rebar clean
+	@rm -f test/*.pyc
 
 distclean:
 	@./rebar delete-deps

@@ -69,22 +69,22 @@
                         switch (xhr.status) {
                         case 204:
                           Platformer.log('Successfully deleted.');
-                          var ids = pf._loadUserids();
-                          var index = $.inArray(pf.userid, ids);
-                          if (index != -1) {
-                            ids.splice(index, 1);
-                          }
-
-                          // Select the first userid in the remaining list.
-                          pf._setUserid(ids[0]);
-
-                          // Save and update.
-                          pf._saveUserids(ids);
-                          pf.updateUserids();
+                          pf._chooseNextId();
                           break;
 
                         default:
                           Platformer.log('Success uncertain.');
+                        }
+                      },
+                      error: function (xhr, textStatus, error) {
+                        switch (xhr.status) {
+                        case 410:
+                          Platformer.log('User is already gone; cannot be deleted.');
+                          pf._chooseNextId();
+                          break;
+
+                        default:
+                          Platformer.log('Unexpected error ' + xhr.status);
                         }
                       }
                      });
@@ -142,10 +142,6 @@
                          Platformer.log('User has been deleted.');
                          break;
                        }
-                     },
-                     beforeSend: function (xhr) {
-                       xhr.setRequestHeader("X-Platformer-Message-Token", Math.uuid());
-                       xhr.setRequestHeader("X-Platformer-Message-Priority", "0");
                      }
                     });
      },
@@ -379,6 +375,21 @@
                   }
                 });
        }
+     },
+
+     _chooseNextId: function () {
+       var ids = this._loadUserids();
+       var index = $.inArray(this.userid, ids);
+       if (index != -1) {
+         ids.splice(index, 1);
+       }
+
+       // Select the first userid in the remaining list.
+       this._setUserid(ids[0]);
+
+       // Save and update.
+       this._saveUserids(ids);
+       this.updateUserids();
      },
 
      /* Save the given array of userids to local storage. */

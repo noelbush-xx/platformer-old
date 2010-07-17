@@ -17,7 +17,7 @@ CONFIG="app"
 
 ARGS="--background"
 
-set -- `getopt --options C:s:rc:h --longoptions count:,start:,reset-db,config:,help --unquoted -- "$@"`
+set -- `getopt --options C:s:rc:qh --longoptions count:,start:,reset-db,config:,quiet,help --unquoted -- "$@"`
 while [ $# -gt 0 ]; do
     case "$1" in
         -C|--count)       NODE_COUNT=$2; shift;;
@@ -25,6 +25,7 @@ while [ $# -gt 0 ]; do
         -c|--config)      ARGS="$ARGS --config=$2"; shift;;
         -l|--log-config)  ARGS="$ARGS --log-config=$2"; shift;;
         -r|--reset-db)    ARGS="$ARGS --reset-db";;
+        -q|--quiet)       QUIET="quiet" ; ARGS="$ARGS --quiet";;
         -h|--help)
                           echo $USAGE;
                           echo "options (specify any or none):"
@@ -32,6 +33,7 @@ while [ $# -gt 0 ]; do
                           echo "-s|--start=PORT        the port number to start with (default: $START_PORT)"
                           echo "-r|--reset-db          reset the database(s) on startup"
                           echo "-c|--config=NAME       read application configuration from NAME.config (default: $APP_CONFIG)"
+                          echo "-q|--quiet             don't print any messages about starting and stopping"
                           echo "-h|--help              print this help message"
                           echo
                           echo "command (specify one):"
@@ -50,19 +52,25 @@ done
 END_PORT=$(( $START_PORT + $NODE_COUNT - 1 ))
 case "$@" in
     start)
-        log_action_msg "Starting $NODE_COUNT Platformer nodes, beginning at port $START_PORT."
+        if [ -z "$QUIET" ]; then
+            log_action_msg "Starting $NODE_COUNT Platformer nodes, beginning at port $START_PORT."
+        fi
         for PORT in $(seq $START_PORT $END_PORT ); do
             $COMMAND $ARGS --port=$PORT start
         done
         ;;
     stop)
-        log_action_msg "Stopping $NODE_COUNT Platformer nodes."
+        if [ -z "$QUIET" ]; then
+            log_action_msg "Stopping $NODE_COUNT Platformer nodes."
+        fi
         for PORT in $(seq $START_PORT $END_PORT); do
             $COMMAND $ARGS --port=$PORT stop
         done
         ;;
     restart)
-        log_action_msg "Restarting $NODE_COUNT Platformer nodes."
+        if [ -z "$QUIET" ]; then
+            log_action_msg "Restarting $NODE_COUNT Platformer nodes."
+        fi
         for PORT in $(seq $START_PORT $END_PORT); do
             $COMMAND $ARGS --port=$PORT restart
         done

@@ -27,7 +27,7 @@ uuid() ->
 
 %% @doc Verify that the given string is a valid v4 UUID.
 is_valid_uuid(String) ->
-    case re:run(String, "[[:xdigit:]]{8}-[[:xdigit:]]{4}-4[[:xdigit:]]{3}-[89ab][[:xdigit:]]{3}-[[:xdigit:]]{12}") of
+    case re:run(String, "[[:xdigit:]]{8}-[[:xdigit:]]{4}-4[[:xdigit:]]{3}-[89ab][[:xdigit:]]{3}-[[:xdigit:]]{12}", [caseless]) of
         {match, _} -> true; 
         nomatch -> false
     end.
