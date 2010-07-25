@@ -24,7 +24,7 @@
 -import(crone).
 -import(log4erl).
 
--import(platformer.core.liaison).
+-import(platformer.core.node).
 -import(platformer.core.util).
 
 %% External exports
@@ -135,13 +135,16 @@ init([]) ->
         false -> platformer.core.node:load_preconfigured()
     end,
 
+    %% Create/verify record for own node in db.
+    node:create(node:my_address()),
+
     %% Announce self to other servers, seek peers, and set up timed announcements and peer searches.
-    liaison:announce_self(),
-    liaison:seek_peers(),
+    node:announce_self(),
+    node:seek_peers(),
     crone:start([{{daily,{every,{5,min},{between,{12,am},{11,55,pm}}}},
-                  {platformer.core.liaison,announce_self,[]}}]),
+                  {platformer.core.node,announce_self,[]}}]),
     crone:start([{{daily,{every,{5,min},{between,{12,am},{11,55,pm}}}},
-                  {platformer.core.liaison,seek_peers,[]}}]),
+                  {platformer.core.node,seek_peers,[]}}]),
     
                      
     log4erl:info("Starting up Platformer node listening on port ~B.", [Port]),

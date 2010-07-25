@@ -11,18 +11,20 @@ USERID_REGEXP = re.compile(r'platformer_user_'
 USER_JSON_REGEXP = re.compile(r'\{"user":' r'\{"id":"' + USERID_REGEXP.pattern + '"\}\}', re.I)
 USER_PATH_REGEXP = re.compile(r'/user/' + USERID_REGEXP.pattern)
 
-# This class contains tests related to creating, verifying and deleting users.
-# It does not include setup or teardown code, so subclasses can test different
-# node configurations.
 class UserTests(unittest.TestCase):
+    """This class contains tests related to creating, verifying and
+    deleting users.  It does not include setup or teardown code, so
+    subclasses can test different node configurations."""
 
-    def valid_propagation_headers(self):
-        return {'X-Platformer-Memo-Token': uuid.uuid4(), 'X-Platformer-Memo-Priority': '3'}
+    #
+    # Although propagation headers do not have to be produced by a
+    # client, they are allowed.  So our first tests involve validation
+    # of these headers.  For all other tests, we omit them.
 
     def test_00_create_user_with_headers(self):
         """Create user via POST, *with* propagation headers.  Receive 201, valid JSON for user, and correct Location header."""
 
-        self.request('POST', '/user', headers = self.valid_propagation_headers())
+        self.request('POST', '/user', headers = {'X-Platformer-Memo-Token': uuid.uuid4(), 'X-Platformer-Memo-Priority': '3'})
 
         # Check status code.
         self.verify_status_code(httplib.CREATED)
@@ -90,6 +92,9 @@ class UserTests(unittest.TestCase):
 
         # Check that status code is 400 BAD REQUEST.
         self.verify_status_code(httplib.BAD_REQUEST)
+
+    #
+    # All the following tests omit propagation headers (the normal case).
 
     def test_01_create_user(self):
         """Create user via POST (no propagation headers).  Receive 201, valid JSON for user, and correct Location header."""

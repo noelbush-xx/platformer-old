@@ -1,0 +1,32 @@
+diff -r ba821ed12c56 src/wrq.erl
+--- a/src/wrq.erl	Wed Jul 14 11:02:44 2010 -0700
++++ b/src/wrq.erl	Fri Jul 23 11:33:50 2010 +0200
+@@ -93,7 +93,9 @@
+ 
+ port(_RD = #wm_reqdata{port=Port}) -> Port. % integer
+ 
+-response_code(_RD = #wm_reqdata{response_code=C}) when is_integer(C) -> C.
++response_code(_RD = #wm_reqdata{response_code=C}) when is_integer(C) -> C;
++
++response_code(C) when is_integer(C) -> C.
+ 
+ req_cookie(_RD = #wm_reqdata{req_cookie=C}) when is_list(C) -> C. % string
+ 
+@@ -131,13 +133,15 @@
+ resp_redirect(_RD = #wm_reqdata{resp_redirect=true}) -> true;
+ resp_redirect(_RD = #wm_reqdata{resp_redirect=false}) -> false.
+ 
+-resp_headers(_RD = #wm_reqdata{resp_headers=RespH}) -> RespH. % mochiheaders
++resp_headers(_RD = #wm_reqdata{resp_headers=RespH}) -> RespH; % mochiheaders
++resp_headers(C) when is_integer(C) -> []. 
+ 
+ resp_body(_RD = #wm_reqdata{resp_body=undefined}) -> undefined;
+ resp_body(_RD = #wm_reqdata{resp_body={stream,X}}) -> {stream,X};
+ resp_body(_RD = #wm_reqdata{resp_body={writer,X}}) -> {writer,X};
+ resp_body(_RD = #wm_reqdata{resp_body=RespB}) when is_binary(RespB) -> RespB;
+-resp_body(_RD = #wm_reqdata{resp_body=RespB}) -> iolist_to_binary(RespB).
++resp_body(_RD = #wm_reqdata{resp_body=RespB}) -> iolist_to_binary(RespB);
++resp_body(C) when is_integer(C) -> [].
+ 
+ %% --
+ 

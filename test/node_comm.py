@@ -2,7 +2,7 @@
 import unittest
 import httplib, re, time
 
-SERVER_TIMEOUT = 7
+SERVER_TIMEOUT = 10
 
 class NodeCommunicator(unittest.TestCase):
     """This provides a testing framework and utilities for communicating
@@ -32,7 +32,7 @@ class NodeCommunicator(unittest.TestCase):
     def wait_for_client_ready(self):
         """Try to connect to the client, repeating until successful or SERVER_TIMEOUT has expired."""
 
-        self.client = httplib.HTTPConnection(self.host, self.port)
+        self.client = httplib.HTTPConnection(self.host, self.port, timeout=SERVER_TIMEOUT)
 
         # Keep trying to connect until the server responds or the
         # timeout is exceeded.
@@ -57,8 +57,12 @@ class NodeCommunicator(unittest.TestCase):
         self.method = method
         self.uri = uri
         self.client.request(method, uri, body, headers)
-        self.response = self.client.getresponse()
-        self.response_body = self.response.read()
+        try:
+            self.response = self.client.getresponse()
+        except httplib.BadStatusLine:
+            self.fail('Error reading response from request to ' + self.host + ':' + str(self.port) + '.')
+        else:
+            self.response_body = self.response.read()
            
     def verify_status_code(self, code):
         """Assume that a request has already been sent to the client and

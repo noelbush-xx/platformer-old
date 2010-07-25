@@ -45,7 +45,6 @@ valid_propagation_envelope(ReqData, Explain, AllowNone) ->
         verify_headers([{"X-Platformer-Memo-Token", fun(S) -> memo:is_valid_token(S, "X-Platformer-Memo-Token") end},
                         {"X-Platformer-Memo-Priority", fun(S) -> memo:is_valid_priority(S, "X-Platformer-Memo-Priority") end}
                        ], ReqData, Explain),
-    log4erl:debug("Valid: ~p, Invalid: ~p", [Valid, Invalid]),
     if
         Valid == 0 andalso Invalid == 0 ->
             if AllowNone     -> true;

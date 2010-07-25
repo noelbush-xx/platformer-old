@@ -67,7 +67,7 @@ content_types_provided(ReqData, Context) ->
 
 create_path(ReqData, Context) ->
     case node:create(Context#context.record) of
-        {ok, Node} ->
+        {Ok, Node} when Ok =:= ok orelse Ok =:= already_exists ->
             Path = node:get_path(Node),
             {Path, wrq:set_resp_header("Location", Path, ReqData), Context#context{record=Node}};
         {error, Error} ->
@@ -103,13 +103,10 @@ malformed_request(ReqData, Context) ->
                     try ?json_to_record(nodespec, binary_to_list(Body)) of
                         %% Since we have to construct the record to determine its validity, we'll hang onto it
                         %% (We fix the scheme as an atom while we're at it.)
-                        #nodespec{} = Record -> 
+                        #nodespec{scheme=Scheme, host=Host, port=Port} ->
+                            Record = #pfnode{scheme = binary_to_atom(Scheme, latin1), host = Host, port = Port},
                             {false, ReqData,
-                             Context#context{record = #pfnode{scheme = binary_to_atom(Record#nodespec.scheme, latin1),
-                                                              host = Record#nodespec.host,
-                                                              port = Record#nodespec.port
-                                                             }
-                                            }}
+                             Context#context{record=Record}}
                     catch error ->
                             {true, wrq:append_to_response_body("Invalid or missing node specification."), Context}
                     end,
@@ -140,13 +137,12 @@ options(ReqData, Context) ->
 %% POST is only create if the request body describes a node we don't yet know.
 post_is_create(ReqData, Context) ->
     Record = Context#context.record,
-    .io:format("Record: ~p~n", [Record]),
     {case node:get(Record) of
          not_found ->
              %% log4erl:debug("Received POST with new node: ~p", [node:get_address(Record)]),
              true;
-         _Node ->
-             %% log4erl:debug("Received POST with previously known node: ~p", [node:get_address(Record)]),
+         Node ->
+             %% log4erl:debug("Received POST with previously known node: ~p", [node:get_address(Node)]),
              false
      end,
      ReqData, Context}.

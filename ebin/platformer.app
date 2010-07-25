@@ -19,7 +19,6 @@
              platformer.core.memo,
              platformer.core.node,
              platformer.core.user,
-             platformer.core.liaison,
              platformer.core.util,
              %% Externals
              crone,

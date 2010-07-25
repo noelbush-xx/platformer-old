@@ -15,11 +15,10 @@
                  last_modified   % when last modified by node retaining this record
                 }).
 
-%% A token sent along to track queries.
--record(query_token, {uuid,      % a unique id (v4 uuid)
-                      age,       % how "old" (number of hops) is this query
-                      received   % when the query bearing this token was received
-                     }).
+%% A token sent along to track memos.
+-record(pftoken, {id,            % a unique id (v4 uuid)
+                  received       % when the memo bearing this token was received
+                 }).
 
 %% A subset of what's in a full node record, for announcing self.
 -record(nodespec, {scheme,       % http | https

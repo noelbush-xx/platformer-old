@@ -93,7 +93,9 @@ host_tokens(_RD = #wm_reqdata{host_tokens=HostT}) -> HostT. % list of strings
 
 port(_RD = #wm_reqdata{port=Port}) -> Port. % integer
 
-response_code(_RD = #wm_reqdata{response_code=C}) when is_integer(C) -> C.
+response_code(_RD = #wm_reqdata{response_code=C}) when is_integer(C) -> C;
+
+response_code(C) when is_integer(C) -> C.
 
 req_cookie(_RD = #wm_reqdata{req_cookie=C}) when is_list(C) -> C. % string
 
@@ -131,13 +133,15 @@ maybe_conflict_body(BodyResponse) ->
 resp_redirect(_RD = #wm_reqdata{resp_redirect=true}) -> true;
 resp_redirect(_RD = #wm_reqdata{resp_redirect=false}) -> false.
 
-resp_headers(_RD = #wm_reqdata{resp_headers=RespH}) -> RespH. % mochiheaders
+resp_headers(_RD = #wm_reqdata{resp_headers=RespH}) -> RespH; % mochiheaders
+resp_headers(C) when is_integer(C) -> []. 
 
 resp_body(_RD = #wm_reqdata{resp_body=undefined}) -> undefined;
 resp_body(_RD = #wm_reqdata{resp_body={stream,X}}) -> {stream,X};
 resp_body(_RD = #wm_reqdata{resp_body={writer,X}}) -> {writer,X};
 resp_body(_RD = #wm_reqdata{resp_body=RespB}) when is_binary(RespB) -> RespB;
-resp_body(_RD = #wm_reqdata{resp_body=RespB}) -> iolist_to_binary(RespB).
+resp_body(_RD = #wm_reqdata{resp_body=RespB}) -> iolist_to_binary(RespB);
+resp_body(C) when is_integer(C) -> [].
 
 %% --
 

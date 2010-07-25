@@ -14,7 +14,8 @@
 
 -import(uuid).
 
--export([get_param/1, get_param/2, is_valid_uuid/1, json_wrap/2, jsonify/1, md5/1, now_int/0, shuffle/1, uuid/0]).
+-export([get_param/1, get_param/2, is_valid_uuid/1, json_wrap/2, jsonify/1, md5/1, now_int/0, shuffle/1, uuid/0,
+        httpc_standard_http_options/0, httpc_standard_options/0]).
 
 %% From http://rosettacode.org/wiki/MD5#Erlang
 md5(S) ->
@@ -70,3 +71,8 @@ json_wrap(Prefix, Data) ->
 %% json-ify the given data.
 jsonify(Data) ->
   mochijson:encode({struct, Data}).
+
+httpc_standard_http_options() -> [{timeout, util:get_param(httpc_timeout)}].
+
+httpc_standard_options() -> [].
+    

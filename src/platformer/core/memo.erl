@@ -8,12 +8,15 @@
 
 -import(httpc).
 -import(lists).
+-import(mnesia).
+-import(qlc).
 
 -import(log4erl).
 
+-include_lib("stdlib/include/qlc.hrl").
 -include_lib("platformer.hrl").
 
--export([is_valid_token/2, is_valid_priority/2, propagate/4, propagate/5]).
+-export([check_token/1, is_valid_token/2, is_valid_priority/2, propagate/4, propagate/5, propagate/6, propagate/7]).
 
 is_valid_token(S, Description) ->
     case util:is_valid_uuid(S) of
@@ -40,35 +43,81 @@ is_valid_priority(S, Description) ->
         error:badarg -> {false, Description ++ " must be an integer."}
     end.
 
+%% @doc Check whether the given token has been seen before.  If it has
+%% not, return <code>ok</code> and add the token to the
+%% <code>pftoken</code> database table.  If it has, return
+%% <code>already_seen</code>.
+%%
+%% @spec check_token(string()) -> ok | already_seen
+check_token(Id) ->
+    case length(db:find(qlc:q([X || X <- mnesia:table(pftoken), X#pftoken.id =:= Id]))) of
+        0 ->
+            Token = #pftoken{id=Id, received=util:now_int()},
+            case db:write(Token) of
+                {atomic, ok} ->
+                    ok;
+                {aborted, Error} ->
+                    throw(Error)
+            end;
+        1 ->
+            already_seen
+    end.
 
 %% @doc Propagate an item with no body.
 %%
 %% @spec propagate(string(), string(), envelope()) -> ok
-propagate(Action, Type, Id, #envelope{} = Envelope) when Action =:= put orelse Action =:= delete ->
-    propagate(Action, Type, Id, undefined, Envelope).
+propagate(Action, Type, Id, #envelope{} = Envelope, MandatoryTargets, Omit) when Action =:= put orelse Action =:= delete ->
+    propagate(Action, Type, Id, undefined, Envelope, MandatoryTargets, Omit).
+
+%% @doc Convenience function for {@link propagate/5} where there are
+%% no mandatory targets and no nodes to omit.
+propagate(Action, Type, Id, #envelope{} = Envelope) ->
+    propagate(Action, Type, Id, Envelope, [], []).
 
 %% @doc Propagate an item with a body.
 %%
 %% @spec propagate(string(), string(), string(), envelope()) -> ok
-propagate(Action, Type, Id, Body, #envelope{priority=Priority} = Envelope) when Action =:= put orelse Action =:= delete ->
-    Nodes = node:get_random_list({count, Priority}),
-    log4erl:debug("Propagating priority ~B ~p of ~s ~s to ~B node(s).", [Priority, Action, Type, Id, length(Nodes)]),
-    propagate(Nodes, Action, Type, Id, Body, Envelope).
+propagate(Action, Type, Id, _, #envelope{priority=0}, _, _) ->
+    log4erl:debug("Not propagating priority 0 ~p of ~s ~s.", [Action, Type, Id]),
+    ok;
+propagate(Action, Type, Id, Body, #envelope{priority=Priority} = Envelope, MandatoryTargets, Omit) when Action =:= put orelse Action =:= delete ->
+    Nodes = lists:append(MandatoryTargets, node:get_random_list({count, Priority}, [], lists:append(Omit, [(node:me())#pfnode.id]))),
+    NodeCount = length(Nodes),
+    if
+        NodeCount > 0 ->
+            log4erl:debug("Propagating priority ~B ~p of ~s ~s to ~B node(s).", [Priority - 1, Action, Type, Id, NodeCount]),
+            propagate_to_nodes(Nodes, Action, Type, Id, Body, Envelope#envelope{priority=integer_to_list(Priority - 1)});
+        NodeCount =:= 0 ->
+            log4erl:debug("No nodes to which to propagate priority ~B ~p of ~s ~s.", [Priority - 1, Action, Type, Id]),
+            ok
+    end.
 
-propagate([Node|Rest], Action, Type, Id, Body, #envelope{token=Token, priority=Priority, source=Source} = Envelope) ->
-    Address = node:get_address(Node),
-    log4erl:debug("Propagating ~p of ~s to node ~s.", [Action, Type, Address]),
-    Uri = lists:concat([Address, "/", Type, "/", Id]),
-    Headers = [{"X-Platformer-Memo-Token", Token},
-               {"X-Platformer-Memo-Priority", integer_to_list(Priority)},
-               {"X-Platformer-Memo-Source", Source}],
-    case Body of
-        undefined ->
-            httpc:request(Action, {Uri, Headers, "text/plain", ""}, [], []);
-        Body ->
-            httpc:request(Action, {Uri, Headers, "text/javascript", Body}, [], [])
+%% @doc Convenience function for {@link propagate/7} where there are
+%% no mandatory targets and no nodes to omit.
+propagate(Action, Type, Id, Body, #envelope{} = Envelope) ->
+    propagate(Action, Type, Id, Body, Envelope, [], []).
+
+propagate_to_nodes([Node|Rest], Action, Type, Id, Body, #envelope{token=Token, priority=Priority} = Envelope) ->
+    case node:is_me(Node) of
+        true -> log4erl:debug("No need to propagate to self.");
+        false ->
+            Address = node:get_address(Node),
+            log4erl:debug("Propagating ~p of ~s to node ~s.", [Action, Type, Address]),
+            Uri = lists:concat([Address, "/", Type, "/", Id]),
+            Headers = [{"X-Platformer-Memo-Token", Token},
+                       {"X-Platformer-Memo-Priority", Priority},
+                       {"X-Platformer-Memo-Source", node:my_address()}],
+            if Body =:= undefined ->
+                    if Action =:= put ->
+                            throw({error, "httpc requires that a PUT have a body."});
+                       Action =/= put ->
+                            httpc:request(Action, {Uri, Headers}, util:httpc_standard_http_options(), util:httpc_standard_options())
+                    end;
+               Body =/= undefined ->
+                    httpc:request(Action, {Uri, Headers, "text/javascript", Body}, util:httpc_standard_http_options(), util:httpc_standard_options())
+            end
     end,
-    propagate(Rest, Action, Type, Id, Body, Envelope);
-propagate([], Action, Type, Id, _, _) ->
+    propagate_to_nodes(Rest, Action, Type, Id, Body, Envelope);
+propagate_to_nodes([], Action, Type, Id, _, _) ->
     log4erl:debug("No more nodes to which to propagate ~p of ~s ~s.", [Action, Type, Id]),
     ok.

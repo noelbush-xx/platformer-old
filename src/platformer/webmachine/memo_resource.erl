@@ -22,14 +22,13 @@
 -import(lists).
 -import(string).
 
--import(jsonerl).
 -import(log4erl).
 -import(wrq).
 
+-import(platformer.core.memo).
 -import(platformer.core.util).
 
 -include_lib("webmachine/include/webmachine.hrl").
--include_lib("jsonerl.hrl").
 
 -include_lib("platformer.hrl").
 
@@ -116,7 +115,7 @@ is_conflict(ReqData, Context) ->
                                 [Context#context.id];
                             Priority > 0 ->
                                 log4erl:debug("PUT of ~s has priority ~B; will be propagated.", [Context#context.type, Priority]),
-                                [Context#context.id, (Context#context.envelope)#envelope{priority=Priority - 1}]
+                                [Context#context.id, Context#context.envelope]
                         end,
                     {_, Path} = apply(Context#context.module, create, CreateArgs),
                     {false, wrq:set_resp_header("Location", Path, ReqData), Context}
@@ -124,42 +123,77 @@ is_conflict(ReqData, Context) ->
         _ -> {false, ReqData, Context}
     end.
 
-%% @doc Check syntax of ids for PUT requests to ensure validity.
+%% @doc Check the memo-token, and record it.  Do not respond to memos
+%% with an already-seen token. Also, check syntax of ids for PUT
+%% requests to ensure validity.
 %%
 %% See {@wmdocs}
 forbidden(ReqData, Context) ->
-    case wrq:method(ReqData) of
-        'PUT' ->
-            case apply(Context#context.module, is_valid_id, [Context#context.id]) of
-                true ->
-                    {false, ReqData, Context};
-                false ->
-                    {true, wrq:append_to_response_body(Context#context.id ++ " is not a valid id for this type of resource.", ReqData), Context}
+    case Context#context.envelope of
+        invalid -> {false, ReqData, Context};
+        #envelope{token=Token} = Envelope ->
+            NC1 = Context#context{envelope = Envelope},
+            case memo:check_token(Token) of
+                ok ->
+                    log4erl:debug("Received token is ok."),
+                    case wrq:method(ReqData) of
+                        'PUT' ->
+                            case apply(NC1#context.module, is_valid_id, [NC1#context.id]) of
+                                true ->
+                                    {false, ReqData, NC1};
+                                false ->
+                                    {true, wrq:append_to_response_body(NC1#context.id ++ " is not a valid id for this type of resource.", ReqData), NC1}
+                            end;
+                        _ -> {false, ReqData, NC1}
+                    end;
+                already_seen ->
+                    log4erl:debug("Token was already seen: ~s", [Token]),
+                    {true, wrq:append_to_response_body("This token has already been seen.", ReqData), NC1}
             end;
-        _ -> {false, ReqData, Context}
+        undefined -> {false, ReqData, Context#context{envelope=invalid}}
     end.
 
-%% @doc Any request is malformed if it contains a request body.  We
-%% also validate and capture a propagation envelope if one is present;
-%% if one is not present, we create it.
+%% @doc A PUT request <em>must</em> have a request body, while all
+%% others must <em>not</em>.  Also, requests whose envelopes are
+%% invalid (see {@link forbidden}) are malformed.
 %%
 %% See {@wmdocs}
 malformed_request(ReqData, Context) ->
-    {Invalid, Envelope, NRD2} = 
-        case common:valid_propagation_envelope(ReqData, false, true) of
-            {true, Env, NRD1} -> {false, Env, NRD1};
-            true -> {false, common:new_propagation_envelope(), ReqData};
-            {false, NRD1} -> {true, common:new_propagation_envelope(), NRD1}
-        end,
-    NC1 = Context#context{envelope = Envelope},
-    {MF, NRD3, NC2} =
-        case wrq:req_body(NRD2) of
-            <<>> -> {Invalid or false, NRD2, NC1};
-            _ -> {true,
-                  wrq:append_to_response_body("Do not include a request body.", NRD2),
-                  NC1}
-        end,
-    {MF, common:postprocess_rd(NRD3), NC2}.
+    Method = wrq:method(ReqData),
+    case Method of
+        'OPTIONS' -> {false, ReqData, Context};
+        _ ->
+            {Envelope, NRD2} =
+                case common:valid_propagation_envelope(ReqData, false, true) of
+                    {true, Env, NRD1} ->
+                        log4erl:debug("Valid propagation envelope provided."),
+                        {Env, NRD1};
+                    true ->
+                        log4erl:debug("No propagation envelope provided; creating a new one."),
+                        {common:new_propagation_envelope(), ReqData};
+                    {false, NRD1} ->
+                        log4erl:debug("Invalid propagation envelope provided."),
+                        {invalid, NRD1}
+                end,
+            case Envelope of
+                invalid -> {true, NRD2, Context};
+                Envelope ->
+                    {MF, NRD3, NC1} =
+                        case Method of
+                            'PUT' ->
+                                case wrq:req_body(NRD2) of
+                                    <<>> -> {true, wrq:append_to_response_body("PUT must include a request body.", NRD2), Context};
+                                    _ -> {false, NRD2, Context}
+                                end;
+                            _ ->
+                                case wrq:req_body(NRD2) of
+                                    <<>> -> {false, NRD2, Context};
+                                    _ -> {true, wrq:append_to_response_body("Do not include a request body.", NRD2), Context}
+                                end
+                        end,
+                        {MF, common:postprocess_rd(NRD3), NC1#context{envelope=Envelope}}
+            end
+    end.
 
 %% @doc See {@wmdocs}
 moved_permanently(ReqData, Context) ->
@@ -222,8 +256,11 @@ previously_existed(ReqData, Context) ->
 %% See {@wmdocs}
 resource_exists(ReqData, Context) ->
     case wrq:method(ReqData) of
-        M when M =:= 'DELETE' orelse M =:= 'HEAD' ->
+        'HEAD' ->
             {Found, Status} = apply(Context#context.module, exists, [list_to_binary(Context#context.id), Context#context.envelope]),
+            {Found, ReqData, Context#context{status=Status}};
+        'DELETE' ->
+            {Found, Status} = apply(Context#context.module, exists, [list_to_binary(Context#context.id), common:new_propagation_envelope()]),
             {Found, ReqData, Context#context{status=Status}};
         'PUT' ->
             {Found, Status} = apply(Context#context.module, exists, [list_to_binary(Context#context.id)]),
@@ -240,6 +277,7 @@ resource_exists(ReqData, Context) ->
 %%
 %%  See {@wmdocs}
 service_available(ReqData, Context) ->
+    log4erl:debug("~p request to ~s.", [wrq:method(ReqData), wrq:raw_path(ReqData)]),
     Type = hd(string:tokens(wrq:path(ReqData), "/")),
     Module = list_to_atom(string:concat("platformer.core.", Type)),
     NC1 = Context#context{type=Type, module=Module},
@@ -253,7 +291,7 @@ to_json(ReqData, Context) ->
     case wrq:method(ReqData) of
         'POST' ->
             {true,
-             wrq:set_resp_body(jsonerl:encode({{Context#context.type, {{id, Context#context.id}}}}), ReqData),
+             wrq:set_resp_body(apply(Context#context.module, to_json, [Context#context.id]), ReqData),
              Context};
         _ ->
             {<<>>, ReqData, Context}

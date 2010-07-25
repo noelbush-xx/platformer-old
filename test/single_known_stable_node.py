@@ -2,8 +2,9 @@
 import node_comm
 import subprocess, time
 
-# This provides connectivity with a single known, stable node.  It does not include test methods.
 class TestSingleKnownStableNode(node_comm.NodeCommunicator):
+    """This provides connectivity with a single known, stable node.
+    It does not include test methods."""
 
     def setUp(self):
         """Setup starts a single Platformer node and verifies connectivity with it."""

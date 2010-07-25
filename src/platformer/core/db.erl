@@ -6,7 +6,7 @@
 -import(qlc).
 
 -include_lib("stdlib/include/qlc.hrl").
--include("platformer.hrl").
+-include_lib("platformer.hrl").
 
 %% This checks that the tables are present.  It doesn't check their
 %% structure (for that we need to do real release management).  If
@@ -47,7 +47,7 @@ reset() ->
     
     mnesia:create_table(pfuser, [{disc_copies, [node()]}, {attributes, record_info(fields, pfuser)}]),
     mnesia:create_table(pfnode, [{disc_copies, [node()]}, {attributes, record_info(fields, pfnode)}]),
-    mnesia:create_table(query_token, [{disc_copies, [node()]}, {attributes, record_info(fields, query_token)}]),
+    mnesia:create_table(pftoken, [{disc_copies, [node()]}, {attributes, record_info(fields, pftoken)}]),
     node:load_preconfigured(),
     ok.
 

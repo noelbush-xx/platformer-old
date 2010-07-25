@@ -4,23 +4,27 @@
 -module(platformer.core.node).
 
 -import(application).
+-import(httpc).
 -import(http_uri).
 -import(httpd_socket).
 -import(lists).
--import(log4erl).
 -import(mnesia).
 -import(proplists).
 -import(qlc).
 -import(string).
 
+-import(jsonerl).
+-import(log4erl).
+
 -include_lib("stdlib/include/qlc.hrl").
 -include_lib("jsonerl.hrl").
 -include_lib("platformer.hrl").
 
--export([adjust_rating/2, create/1, create_from_list/1, get/1,
+-export([adjust_rating/2, create/1, create_from_list/1, get/1, me/0,
          delete/1, load_preconfigured/0, my_address/0, get_address/1,
-         get_id/1, get_list/0, get_random_list/1, get_random_list/2,
-         get_path/1, is_me/1, announce_self/0, seek_peers/0]).
+         get_id/1, get_list/0, get_list/1, get_random_list/1, get_random_list/2,
+         get_random_list/3, get_path/1, is_me/1, announce_self/0,
+         seek_peers/0]).
 
 %% @doc Deletes a node identified by an id.  Return value indicates
 %% whether the operation succeeded.
@@ -60,36 +64,36 @@ create(NodeSpec) ->
 %%  result indicates that the given specification indicates the
 %%  current node and that no new node was created.
 %%
-%% @spec create(term() | tuple() | string(), integer()) -> is_me | {ok, node()} | {error, string()}
+%% @spec create(term() | tuple() | string(), integer()) -> {is_me | ok | already_exists, node()} | {error, string()}
 create(#pfnode{} = Record, Rating) ->
+    Address = get_address(Record),
+    Id = get_id(Address),
+    
+    %% First check whether node record already exists in database.
+    {Status, NodeRecord} =
+        case node:get(Id) of
+            not_found ->
+                %% Augment the supplied record to become a full-fledged node record.
+                Node = Record#pfnode{status=active,
+                                     id=list_to_binary(Id),
+                                     rating=Rating,
+                                     last_modified=util:now_int()},
+                %% log4erl:info("Creating new node with address ~p.", [Address]),
+                case db:write(Node) of
+                    {atomic, ok} ->
+                        {ok, Node};
+                    {aborted, Error} ->
+                        {error, Error}
+                end;
+            Node ->
+                %% log4erl:debug("Node ~p is already known.", [Address]),
+                {already_exists, Node}
+        end,
     case is_me(Record) of
-        true ->
-            %% log4erl:debug("Will not create record for own node."),
-            is_me;
-        _ ->
-            Address = get_address(Record),
-            Id = get_id(Address),
-
-            %% First check whether node record already exists in database.
-            case node:get(Id) of
-                not_found ->
-                    % Augment the supplied record to become a full-fledged node record.
-                    Node = Record#pfnode{status=active,
-                                           id=list_to_binary(Id),
-                                           rating=Rating,
-                                           last_modified=util:now_int()},
-                    log4erl:info("Creating new node with address ~p.", [Address]),
-                    case db:write(Node) of
-                        {atomic, ok} ->
-                            {ok, Node};
-                        {aborted, Error} ->
-                            {error, Error}
-                    end;
-                Node ->
-                    %% log4erl:debug("Node ~p is already known.", [Address]),
-                    {already_exists, Node}
-            end
+        true -> {Status, NodeRecord, is_me};
+        false -> {Status, NodeRecord}
     end;
+
 create(Tuple, Rating) when is_tuple(Tuple) ->
     Proplist = [{binary_to_atom(X, latin1), Y} || {X, Y} <- tuple_to_list(Tuple)],
     RawRecord = list_to_tuple([pfnode|[proplists:get_value(X, Proplist) || X <- record_info(fields, pfnode)]]),
@@ -132,11 +136,21 @@ is_me(#pfnode{host=Host, port=Port}) ->
         false -> false
     end.
 
-%% @doc Returns a list of all nodes known to this one.
+me() ->
+    node:get(get_id(my_address())).
+
+
+%% @doc Returns a list of all nodes known to this one,
+%% <em>including</em> the present node.
 %%
 %% @spec get_list() -> [NodeRecord]
-get_list() ->
+get_list(include_self) ->
     db:read_all(pfnode).
+
+%% @doc Returns a list of all nodes known to this one, <em>except</em>
+%% the present node itself.
+get_list() ->
+    db:find(qlc:q([X || X <- mnesia:table(pfnode), X#pfnode.id =/= list_to_binary(get_id(my_address()))])).
 
 %% @doc Retrieves a node from its id, or from a constructed
 %% record that contains an id.
@@ -156,8 +170,10 @@ get(Id) ->
 %% Value}</code> (0-100) or <code>{count, Count}</code> (> 0).
 %%
 %% @spec get_random_list(tuple()) -> [NodeRecord]
-get_random_list(SampleSize) -> get_random_list(SampleSize, []).
+get_random_list(SampleSize) -> get_random_list(SampleSize, [], []).
 
+
+get_random_list(SampleSize, Criteria) -> get_random_list(SampleSize, Criteria, []).
 
 %% @doc Same as {@link get_random_list/1}, with an additional
 %% parameter <code>Criteria</code>, a list that may contain one, none,
@@ -166,16 +182,19 @@ get_random_list(SampleSize) -> get_random_list(SampleSize, []).
 %% inclusive.
 %%
 %% @spec get_random_list(tuple(), [tuple()]) -> [NodeRecord]
-get_random_list({percentage, Percentage}, _Criteria) when Percentage < 0; Percentage > 100 ->
+get_random_list({percentage, Percentage}, _, _) when Percentage < 0; Percentage > 100 ->
     throw({error, "Sample size percentage must be between 0 and 100."});
 
-get_random_list({count, Count}, _Criteria) when Count < 0 ->
+get_random_list({count, Count}, _, _) when Count < 0 ->
     throw({error, "Sample size count must be greater than 0."});
 
-get_random_list(SampleSize, Criteria) ->
+get_random_list(SampleSize, Criteria, Omit) ->
     MinRating = proplists:get_value(min_rating, Criteria, 0),
     MaxRating = proplists:get_value(max_rating, Criteria, 100),
-    case db:find(qlc:q([X || X <- mnesia:table(pfnode), X#pfnode.rating >= MinRating, X#pfnode.rating =< MaxRating])) of
+    case db:find(qlc:q([X || X <- mnesia:table(pfnode),
+                             X#pfnode.rating >= MinRating,
+                             X#pfnode.rating =< MaxRating,
+                             not lists:member(X#pfnode.id, Omit)])) of
         undefined -> [];
         [] -> [];
         Nodes ->
@@ -202,7 +221,7 @@ load_preconfigured() ->
     end.
 
 load_preconfigured([Address|Rest]) ->
-    log4erl:debug("Preconfigured node: ~p", [Address]),
+    %% log4erl:debug("Preconfigured node: ~p", [Address]),
     create(Address),
     load_preconfigured(Rest);
 load_preconfigured([]) -> ok.
@@ -220,7 +239,7 @@ adjust_rating(Node, Adjustment) ->
     NewRating = lists:min([100, lists:max([0, CurrentRating + Adjustment])]),
     if
         NewRating =/= CurrentRating ->
-            log4erl:debug("Adjusting rating for node from ~B to ~B.", [CurrentRating, NewRating]),
+            %% log4erl:debug("Adjusting rating for node from ~B to ~B.", [CurrentRating, NewRating]),
             db:write(Node#pfnode{rating=NewRating});
         NewRating =:= CurrentRating ->
             ok
