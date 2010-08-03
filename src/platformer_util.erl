@@ -1,18 +1,7 @@
 %% @author Noel Bush <noel@platformer.org>
 %% @copyright 2010 Noel Bush.
 %% @doc miscellaneous utilities.
--module(platformer.core.util).
-
--import(application).
--import(io_lib).
--import(lists).
--import(math).
--import(mochijson).
--import(random).
--import(re).
--import(string).
-
--import(uuid).
+-module(platformer_util).
 
 -export([get_param/1, get_param/2, is_valid_uuid/1, json_wrap/2, jsonify/1, md5/1, now_int/0, shuffle/1, uuid/0,
         httpc_standard_http_options/0, httpc_standard_options/0]).

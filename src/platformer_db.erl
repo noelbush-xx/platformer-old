@@ -1,9 +1,5 @@
--module(platformer.core.db).
+-module(platformer_db).
 -export([check_tables/0, delete/1, find/1, read_all/1, reset/0, write/1]).
-
--import(log4erl).
--import(mnesia).
--import(qlc).
 
 -include_lib("stdlib/include/qlc.hrl").
 -include_lib("platformer.hrl").

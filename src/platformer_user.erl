@@ -3,20 +3,10 @@
 %% @author Noel Bush <noel@platformer.org>
 %% @copyright 2010 Noel Bush.
 
--module(platformer.core.user).
--behaviour(gen_memo).
+-module(platformer_user).
+-behaviour(platformer_memo).
 
 -export([create/1, create/2, delete/2, exists/1, exists/2, get/1, is_valid_id/1, to_json/1]).
-
--import(httpc).
--import(lists).
--import(mnesia).
--import(string).
--import(qlc).
-
--import(jsonerl).
--import(log4erl).
--import(uuid).
 
 -include_lib("stdlib/include/qlc.hrl").
 -include_lib("jsonerl.hrl").
@@ -24,9 +14,7 @@
 
 %% @doc Create a brand new user.  Return an id and a path.
 %%
--spec create(envelope()) -> {Userid, Path}.
-%%       Userid = string()
-%%       Path = string()
+%% @spec create(envelope()) -> {Userid::string(), Path::string()}
 create(#envelope{} = Envelope) ->
     log4erl:debug("Creating new user."),
     IdString = string:concat("platformer_user_", util:uuid()),
@@ -34,9 +22,7 @@ create(#envelope{} = Envelope) ->
 
 %% @doc Create a local record of a user that already exists somewhere else.
 %%
--spec create(string(), envelope()) -> {Userid, Path}.
-%%       Userid = string()
-%%       Path = string()
+%% @spec create(Id::string(), envelope()) -> {Userid::string(), Path::string()}
 create(IdString, #envelope{priority=Priority, source=Source} = Envelope) ->
     Id = list_to_binary(IdString),
     User = #pfuser{id=Id, status=active, last_modified=util:now_int(), source=Source},
@@ -52,7 +38,7 @@ create(IdString, #envelope{priority=Priority, source=Source} = Envelope) ->
 
 %% @doc Mark a local record of a user as deleted.
 %%
--spec delete(string(), envelope()) -> none().
+%% @spec delete(Id::string(), envelope()) -> none()
 delete(IdString, #envelope{} = Envelope) ->
     log4erl:debug("Delete user ~p.", [IdString]),
     Id = list_to_binary(IdString),
@@ -79,7 +65,7 @@ delete(IdString, #envelope{} = Envelope) ->
 
 %% @doc Get a user by id.
 %%
--spec get(string()) -> pfuser().
+%% @spec get(string()) -> pfuser()
 get(Id) ->
     Result = db:find(qlc:q([X || X <- mnesia:table(pfuser), X#pfuser.id == Id])),
     case length(Result) of
@@ -96,7 +82,7 @@ get(Id) ->
 %% @doc Check whether there is a local record for a user with the given id.
 %%  No attempt is made to check remove servers (For that, use {@link exists/2}.)
 %%
--spec exists(string()) -> {bool(), active | deleted}.
+%% @spec exists(string()) -> {bool(), active | deleted}
 exists(Id) ->
     log4erl:debug("Checking for local record of user ~s", [Id]),
     case user:get(Id) of
@@ -112,7 +98,7 @@ exists(Id) ->
             end
     end.
     
--spec exists(binary(), envelope()) -> {bool(), active | deleted}.
+%% @spec exists(binary(), envelope()) -> {bool(), active | deleted}
 exists(Id, #envelope{} = Envelope) ->
     %% First check the local database.
     case exists(Id) of
@@ -122,7 +108,7 @@ exists(Id, #envelope{} = Envelope) ->
             exists(Id, node:get_list(), Envelope)
     end.
     
--spec exists(string(), [NodeRecord]) -> {bool(), active | deleted}.
+%% @spec exists(binary(), [pfnode()], envelope()) -> {bool(), active | deleted}
 exists(Id, Nodes, #envelope{} = Envelope) when is_binary(Id) ->
     log4erl:debug("Checking up to ~B other nodes for existence of user ~s", [length(Nodes), Id]),
     exists(binary_to_list(Id), Nodes, Envelope);
@@ -168,10 +154,16 @@ exists(_Id, [], _) ->
     log4erl:debug("No more nodes to check."),
     {false, unknown}.
 
+%% @doc Is the given id valid for a user?
+%%
+%% @spec is_valid_id(string()) -> bool()
 is_valid_id(Id) ->
     string:left(Id, 16) =:= "platformer_user_"
         andalso
         util:is_valid_uuid(string:substr(Id, 17)).
 
+%% @doc Produce a json representation of the user with the given id.
+%%
+%% @spec to_json(string()) -> string()
 to_json(Id) ->
     jsonerl:encode({{user, {{id, Id}}}}).

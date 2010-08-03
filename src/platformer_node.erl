@@ -1,20 +1,7 @@
 %% @author Noel Bush <noel@platformer.org>
 %% @copyright 2010 Noel Bush.
 
--module(platformer.core.node).
-
--import(application).
--import(httpc).
--import(http_uri).
--import(httpd_socket).
--import(lists).
--import(mnesia).
--import(proplists).
--import(qlc).
--import(string).
-
--import(jsonerl).
--import(log4erl).
+-module(platformer_node).
 
 -include_lib("stdlib/include/qlc.hrl").
 -include_lib("jsonerl.hrl").

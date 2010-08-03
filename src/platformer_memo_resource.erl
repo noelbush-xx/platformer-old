@@ -6,7 +6,7 @@
 %% existence of something.  It is an "abstract class" whose concrete
 %% instantiations are user_resource, position_resource, etc.
 
--module(platformer.webmachine.memo_resource).
+-module(platformer_memo_resource).
 -export([init/1, to_json/2]).
 -export([allow_missing_post/2, allowed_methods/2,
          content_types_accepted/2,
@@ -17,16 +17,6 @@
          moved_temporarily/2, options/2,
          post_is_create/2, previously_existed/2,
          resource_exists/2, service_available/2]).
-
--import(dict).
--import(lists).
--import(string).
-
--import(log4erl).
--import(wrq).
-
--import(platformer.core.memo).
--import(platformer.core.util).
 
 -include_lib("webmachine/include/webmachine.hrl").
 

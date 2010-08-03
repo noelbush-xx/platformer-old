@@ -3,29 +3,10 @@
 
 %% @doc Supervisor for the platformer application.
 
--module(platformer.otp.sup).
+-module(platformer_sup).
 -author('Noel Bush <noel@platformer.org>').
 
 -behaviour(supervisor).
-
--import(application).
--import(code).
--import(file).
--import(filelib).
--import(filename).
--import(init).
--import(lists).
--import(os).
--import(proplists).
--import(re).
--import(string).
--import(supervisor).
-
--import(crone).
--import(log4erl).
-
--import(platformer.core.node).
--import(platformer.core.util).
 
 %% External exports
 -export([start_link/0, upgrade/0]).

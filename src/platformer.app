@@ -6,21 +6,20 @@
   {modules, [
              %% OTP- and Webmachine- related setup modules
              platformer,
-             platformer.otp.app,
-             platformer.otp.sup,
+             platformer_app,
+             platformer_sup,
              %% Webmachine resources
-             platformer.webmachine.ping_resource,
-             platformer.webmachine.node_resource,
-             platformer.webmachine.memo_resource,
-             platformer.webmachine.common,
-             platformer.webmachine.error_handler,
+             platformer_ping_resource,
+             platformer_node_resource,
+             platformer_memo_resource,
+             platformer_resource_common,
+             platformer_error_handler,
              %% Core application modules
-             platformer.core.db,
-             platformer.core.gen_memo,
-             platformer.core.memo,
-             platformer.core.node,
-             platformer.core.user,
-             platformer.core.util,
+             platformer_db,
+             platformer_memo,
+             platformer_node,
+             platformer_user,
+             platformer_util,
              %% Externals
              crone,
              jsonerl,
@@ -35,6 +34,6 @@
                   mochiweb,
                   webmachine
                  ]},
-  {mod, {platformer.otp.app, []}},
+  {mod, {platformer_app, []}},
   {env, []}
  ]}.

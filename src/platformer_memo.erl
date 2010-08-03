@@ -1,22 +1,34 @@
 %% @author Noel Bush <noel@platformer.org>
 %% @copyright 2010 Noel Bush.
-%% @doc Userid resource.
 %%
-%% This module contains functions used by various memo-derived
-%% entities in Platformer.
--module(platformer.core.memo).
+%% @doc Communication among nodes in Platformer is carried out by
+%% propagating <em>memos</em>.  There are specialized memos
+%% corresponding to each of the different sorts of entities that
+%% Platformer is concerned with: users, positions, other nodes, etc.
+%% This module provides some generic services common to all memo
+%% types, and specifies (using Erlang's behaviour mechanism) the
+%% methods that any "concrete subtype" of memo must implement.
 
--import(httpc).
--import(lists).
--import(mnesia).
--import(qlc).
-
--import(log4erl).
+-module(platformer_memo).
 
 -include_lib("stdlib/include/qlc.hrl").
 -include_lib("platformer.hrl").
 
 -export([check_token/1, is_valid_token/2, is_valid_priority/2, propagate/4, propagate/5, propagate/6, propagate/7]).
+
+-export([behaviour_info/1]).
+
+behaviour_info(callbacks) ->
+    [{create, 1},        % Create a brand new memo item, using a given envelope.
+     {create, 2},        % Create a record for an existing memo item, given a specification and an envelope.
+     {delete, 2},        % Mark a record for a memo item as deleted.
+     {exists, 1},        % Check whether a record for a memo item exists.
+     {exists, 2},        % As above, but including an envelope.
+     {get, 1},           % Retrieve a memo by id.
+     {is_valid_id, 1},   % Check whether a given string is a valid id for the memo type.
+     {to_json, 1}        % Return a JSON representation of a memo.
+    ];
+behaviour_info(_Other) -> undefined.
 
 is_valid_token(S, Description) ->
     case util:is_valid_uuid(S) of

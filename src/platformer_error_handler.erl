@@ -1,12 +1,6 @@
--module(platformer.webmachine.error_handler).
+-module(platformer_error_handler).
 
 -export([render_error/3]).
-
--import(eq).
--import(error_logger).
--import(io_lib).
-
--import(log4erl).
 
 render_error(Code, Req, Reason) ->
     %%log4erl:debug("ERROR.~nCode: ~p~nReq: ~p~nReason: ~p~n", [Code, Req, Reason]),

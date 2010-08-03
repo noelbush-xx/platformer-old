@@ -12,7 +12,7 @@
 %% OPTIONS     /node                       200 Access-Control-Allow-Methods: POST, OPTIONS
 %% OPTIONS     /node/id                    200 Access-Control-Allow-Methods: HEAD, DELETE, OPTIONS
 
--module(platformer.webmachine.node_resource).
+-module(platformer_node_resource).
 -export([init/1, to_json/2]).
 -export([accept_content/2, allow_missing_post/2, allowed_methods/2,
          content_types_accepted/2,
@@ -23,15 +23,6 @@
          post_is_create/2, previously_existed/2,
          process_post/2,
          resource_exists/2]).
-
--import(dict).
--import(jsonerl).
--import(lists).
--import(log4erl).
--import(wrq).
-
--import(platformer.core.node).
--import(platformer.core.db).
 
 -include_lib("webmachine/include/webmachine.hrl").
 -include_lib("jsonerl.hrl").
@@ -141,7 +132,7 @@ post_is_create(ReqData, Context) ->
          not_found ->
              %% log4erl:debug("Received POST with new node: ~p", [node:get_address(Record)]),
              true;
-         Node ->
+         _Node ->
              %% log4erl:debug("Received POST with previously known node: ~p", [node:get_address(Node)]),
              false
      end,

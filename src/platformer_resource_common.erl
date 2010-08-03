@@ -4,20 +4,9 @@
 %%
 %% This module contains functions used by different Webmachine-based
 %% Platformer resources.
--module(platformer.webmachine.common).
+-module(platformer_resource_common).
 
 -export([new_propagation_envelope/0, valid_propagation_envelope/1, valid_propagation_envelope/3, support_preflight/2, postprocess_rd/1]).
-
--import(lists).
--import(proplists).
--import(string).
-
--import(log4erl).
--import(wrq).
-
--import(platformer.core.memo).
--import(platformer.core.node).
--import(platformer.core.util).
 
 -include_lib("webmachine/include/webmachine.hrl").
 

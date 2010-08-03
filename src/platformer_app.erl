@@ -3,13 +3,11 @@
 
 %% @doc Callbacks for the platformer application.
 
--module(platformer.otp.app).
+-module(platformer_app).
 -author('Noel Bush <noel@platformer.org>').
 
 -behaviour(application).
 -export([start/2, stop/1]).
-
--import(log4erl).
 
 %% @spec start(_Type, _StartArgs) -> ServerRet
 %% @doc application start callback for platformer.
