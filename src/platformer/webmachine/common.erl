@@ -39,7 +39,7 @@ new_propagation_envelope() ->
 %% true, the wm_reqdata() will carry messages about missing/invalid headers, otherwise it
 %% is the original object passed in.
 %%
-%% @spec valid_propagation_envelope(wm_reqdata(), bool()) -> {bool(), {string(), integer(), string()}, wm_reqdata()} | {bool(), wm_reqdata()}
+%% @spec valid_propagation_envelope(wm_reqdata(), bool(), bool()) -> {bool(), {string(), integer(), string()}, wm_reqdata()} | {bool(), wm_reqdata()}
 valid_propagation_envelope(ReqData, Explain, AllowNone) ->
     {Valid, Invalid, NRD1, Values} =
         verify_headers([{"X-Platformer-Memo-Token", fun(S) -> memo:is_valid_token(S, "X-Platformer-Memo-Token") end},
@@ -70,7 +70,7 @@ valid_propagation_envelope(ReqData) ->
 %% <code>Explain</code> is true, append messages to the response body
 %% (via <code>ReqData</code>) to explain problems as necessary.
 %%
-%% @spec verify_headers(HeadersSpec(), wm_reqdata(), bool()) -> {all, wm_reqdata(), proplist()} | {bad, wm_reqdata()} | none
+%% @spec verify_headers(headers_spec(), wm_reqdata(), bool()) -> {all, wm_reqdata(), proplist()} | {bad, wm_reqdata()} | none
 verify_headers(HeadersSpec, ReqData, Explain) ->
     verify_headers(HeadersSpec, 0, 0, ReqData, Explain, []).
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-import node_comm
+from node_comm import *
 import subprocess, time
 
-class TestSingleKnownStableNode(node_comm.NodeCommunicator):
+class SingleKnownStableNode(NodeCommunicator):
     """This provides connectivity with a single known, stable node.
     It does not include test methods."""
 

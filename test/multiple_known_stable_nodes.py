@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-import node_comm
+from node_comm import *
 import httplib, random, re, subprocess, time
 
 NODE_COUNT = 10
 
-class TestMultipleKnownStableNodes(node_comm.NodeCommunicator):
+class MultipleKnownStableNodes(NodeCommunicator):
     """This provides connectivity with several known, stable nodes.
     It does not include test methods."""
 

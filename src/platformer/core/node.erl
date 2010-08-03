@@ -143,7 +143,7 @@ me() ->
 %% @doc Returns a list of all nodes known to this one,
 %% <em>including</em> the present node.
 %%
-%% @spec get_list() -> [NodeRecord]
+%% @spec get_list(bool()) -> [NodeRecord]
 get_list(include_self) ->
     db:read_all(pfnode).
 
@@ -181,7 +181,7 @@ get_random_list(SampleSize, Criteria) -> get_random_list(SampleSize, Criteria, [
 %% Rating}</code> where <code>Rating</code> is between 0 and 100,
 %% inclusive.
 %%
-%% @spec get_random_list(tuple(), [tuple()]) -> [NodeRecord]
+%% @spec get_random_list(tuple(), [tuple()], [tuple()]) -> [NodeRecord]
 get_random_list({percentage, Percentage}, _, _) when Percentage < 0; Percentage > 100 ->
     throw({error, "Sample size percentage must be between 0 and 100."});
 

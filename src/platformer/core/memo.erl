@@ -65,7 +65,7 @@ check_token(Id) ->
 
 %% @doc Propagate an item with no body.
 %%
-%% @spec propagate(string(), string(), envelope()) -> ok
+%% @spec propagate(atom(), string(), string(), envelope(), list(), list()) -> ok
 propagate(Action, Type, Id, #envelope{} = Envelope, MandatoryTargets, Omit) when Action =:= put orelse Action =:= delete ->
     propagate(Action, Type, Id, undefined, Envelope, MandatoryTargets, Omit).
 
@@ -76,7 +76,7 @@ propagate(Action, Type, Id, #envelope{} = Envelope) ->
 
 %% @doc Propagate an item with a body.
 %%
-%% @spec propagate(string(), string(), string(), envelope()) -> ok
+%% @spec propagate(atom(), string(), string(), string(), envelope(), list(), list()) -> ok
 propagate(Action, Type, Id, _, #envelope{priority=0}, _, _) ->
     log4erl:debug("Not propagating priority 0 ~p of ~s ~s.", [Action, Type, Id]),
     ok;

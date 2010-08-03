@@ -182,7 +182,7 @@ option_spec_list() ->
      {high_port,    $h, "high-port", {integer, 8150},  "Highest port number to use [8150]"},
      {stable_seeds, $s, "stable",    {string, "8000"}, "Port(s) where a node should *always* be available (\"stable seeds\") [(comma-separated list) 8000]"},
      {min_wait,     $i, "min-wait",  {integer, 1},     "Minimum seconds to wait between changes [1]"},
-     {max_wait,     $a, "max-wait",  {integer, 3600},  "Maximum seconds to wait between changes [3600]"},
+     {max_wait,     $a, "max-wait",  {integer, 60},    "Maximum seconds to wait between changes [60]"},
      {chaos,        $C, "chaos",     {integer, 50},    "Degree of chaos (from 0 to 100) [50]"},
      {help,         $h, "help",      undefined,        "Print this help"}
     ].

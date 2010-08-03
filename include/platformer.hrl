@@ -1,8 +1,8 @@
 %% A user of Platformer.
--record(pfuser, {id,             % a unique id (v4 uuid)
-                 status,         % active | deleted
-                 last_modified,  % when last modified by node retaining this record
-                 source          % url of node who told us about this user
+-record(pfuser, {id :: string(),              % a unique id (v4 uuid)
+                 status :: active | deleted,  % active | deleted
+                 last_modified :: integer(),  % when last modified by node retaining this record
+                 source :: string()           % url of node who told us about this user
                 }).
 
 %% A Platformer node.
@@ -28,8 +28,8 @@
 
 
 %% A set of information that follows around a memo item when it is propagated.
--record(envelope, {token,        % a (reasonably) unique string to identify a message
-                   priority,     % an integer indicating how much farther a message should propagate
-                   source        % the origin of the message
+-record(envelope, {token :: string(),         % a (reasonably) unique string to identify a message
+                   priority :: integer(),     % an integer indicating how much farther a message should propagate
+                   source :: string()         % the origin of the message
                   }).
 

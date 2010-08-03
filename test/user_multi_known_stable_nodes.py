@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 import unittest
-import user_tests, multiple_known_stable_nodes
+from user_tests import *
+from multiple_known_stable_nodes import *
 
 # This runs user tests on multiple known, stable nodes.
-class TestUserSingleKnownStableNode(multiple_known_stable_nodes.TestMultipleKnownStableNodes, user_tests.UserTests):
+class TestUserSingleKnownStableNode(MultipleKnownStableNodes, UserTests):
     pass
 
 if __name__ == '__main__':
-    unittest.main()
+    suite = unittest.TestLoader().loadTestsFromTestCase(TestUserSingleKnownStableNode)
+    unittest.TextTestRunner(verbosity=2).run(suite)
