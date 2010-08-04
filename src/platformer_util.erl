@@ -61,7 +61,7 @@ json_wrap(Prefix, Data) ->
 jsonify(Data) ->
   mochijson:encode({struct, Data}).
 
-httpc_standard_http_options() -> [{timeout, util:get_param(httpc_timeout)}].
+httpc_standard_http_options() -> [{timeout, platformer_util:get_param(httpc_timeout)}].
 
 httpc_standard_options() -> [].
     

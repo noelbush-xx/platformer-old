@@ -57,9 +57,9 @@ content_types_provided(ReqData, Context) ->
     {[{"text/javascript", to_json}], ReqData, Context}.
 
 create_path(ReqData, Context) ->
-    case node:create(Context#context.record) of
+    case platformer_node:create(Context#context.record) of
         {Ok, Node} when Ok =:= ok orelse Ok =:= already_exists ->
-            Path = node:get_path(Node),
+            Path = platformer_node:get_path(Node),
             {Path, wrq:set_resp_header("Location", Path, ReqData), Context#context{record=Node}};
         {error, Error} ->
             {"", wrq:append_to_response_body("Could not create new node.\n" ++ Error, ReqData), Context}
@@ -69,7 +69,7 @@ delete_completed(ReqData, Context) ->
     {true, ReqData, Context}.
 
 delete_resource(ReqData, Context) ->
-    {node:delete(wrq:path_info(id, ReqData)), ReqData, Context}.
+    {platformer_node:delete(wrq:path_info(id, ReqData)), ReqData, Context}.
 
 malformed_request(ReqData, Context) ->
     {MF, NewReqData, NewContext} =
@@ -107,7 +107,7 @@ malformed_request(ReqData, Context) ->
                     _ -> {true, wrq:append_to_response_body("Do not POST to an existing node.", NRD1), NC1}
                 end
         end,
-    {MF, common:postprocess_rd(NewReqData), NewContext}.
+    {MF, platformer_resource_common:postprocess_rd(NewReqData), NewContext}.
 
 moved_permanently(ReqData, Context) ->
     {false, ReqData, Context}.
@@ -128,12 +128,12 @@ options(ReqData, Context) ->
 %% POST is only create if the request body describes a node we don't yet know.
 post_is_create(ReqData, Context) ->
     Record = Context#context.record,
-    {case node:get(Record) of
+    {case platformer_node:get(Record) of
          not_found ->
-             %% log4erl:debug("Received POST with new node: ~p", [node:get_address(Record)]),
+             %% log4erl:debug("Received POST with new platformer_node: ~p", [platformer_node:get_address(Record)]),
              true;
          _Node ->
-             %% log4erl:debug("Received POST with previously known node: ~p", [node:get_address(Node)]),
+             %% log4erl:debug("Received POST with previously known platformer_node: ~p", [platformer_node:get_address(Node)]),
              false
      end,
      ReqData, Context}.
@@ -148,7 +148,7 @@ previously_existed(ReqData, Context) ->
 %% found, in which case we just want to send a 303 "See Other"
 %% response.
 process_post(ReqData, Context) ->
-    {true, wrq:do_redirect(true, wrq:set_resp_header("Location", node:get_path(Context#context.record), ReqData)), Context}.
+    {true, wrq:do_redirect(true, wrq:set_resp_header("Location", platformer_node:get_path(Context#context.record), ReqData)), Context}.
 
 resource_exists(ReqData, Context) ->
     resource_exists(wrq:method(ReqData), ReqData, Context).
@@ -157,7 +157,7 @@ resource_exists(Method, ReqData, Context) when Method =:= 'GET'; Method =:= 'HEA
     case wrq:raw_path(ReqData) of
         "/node/list" -> {true, ReqData, Context};
         _ ->
-            case node:get(wrq:path_info(id, ReqData)) of
+            case platformer_node:get(wrq:path_info(id, ReqData)) of
                 not_found -> {false, ReqData, Context};
                 Node -> {true, ReqData, Context#context{record = Node}}
             end
@@ -174,11 +174,11 @@ to_json(ReqData, Context) ->
                  undefined ->
                      %% Of the known nodes with rating 75 or greater,
                      %% share a random sample of 25%.
-                     NodeRecords = node:get_random_list({percentage, 25}, [{min_rating, 75}]),
+                     NodeRecords = platformer_node:get_random_list({percentage, 25}, [{min_rating, 75}]),
                      Nodes = [?record_to_struct(pfnode, Node) || Node <- NodeRecords],
                      jsonerl:encode(?record_to_struct(nodes, #nodes{nodes=Nodes}));
                  Id ->
-                     case node:get(Id) of
+                     case platformer_node:get(Id) of
                          undefined -> <<>>;
                          Node -> ?record_to_json(pfnode, Node)
                      end

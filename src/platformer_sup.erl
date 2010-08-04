@@ -42,11 +42,11 @@ upgrade() ->
 %% @doc supervisor callback.
 init([]) ->
     %% Read config values from a(n optionally supplied) config file
-    Ip = util:get_param(ip, case os:getenv("WEBMACHINE_IP") of false -> "0.0.0.0"; Any -> Any end),
-    Port = util:get_param(port, 8000),
-    PrivDir = filename:join([filename:dirname(code:which(?MODULE)), "..", "..", "..", "priv"]),
-    DispatchPath = filename:join([PrivDir, util:get_param(dispatch, "dispatch.conf")]),
-    WMLogDir = filename:join([PrivDir, util:get_param(log_dir, "log")]),
+    Ip = platformer_util:get_param(ip, case os:getenv("WEBMACHINE_IP") of false -> "0.0.0.0"; Any -> Any end),
+    Port = platformer_util:get_param(port, 8000),
+    PrivDir = filename:join([filename:dirname(code:which(?MODULE)), "..", "priv"]),
+    DispatchPath = filename:join([PrivDir, platformer_util:get_param(dispatch, "dispatch.conf")]),
+    WMLogDir = filename:join([PrivDir, platformer_util:get_param(log_dir, "log")]),
 
     %% Start and configure logging.
     application:start(log4erl),
@@ -59,7 +59,7 @@ init([]) ->
     end,
 
     %% If configured to do so, modify the logger to include the node name.
-    case util:get_param(separate_log, true) of
+    case platformer_util:get_param(separate_log, true) of
         true ->
             case log4erl:change_filename(file, NodeShortName) of
                 {error, E1} -> .io:format("*** Error changing logger filename to ~p. (~p)~n", [NodeShortName, E1]);
@@ -85,7 +85,12 @@ init([]) ->
     %% "%node%" will be replaced with the current node name, and the
     %% directory will be created if it does not exist).
     Dispatch = lists:map(fun({Path, wmtrace_resource, [{trace_dir, InitialTraceDir}]}) ->
-                                 {Path, wmtrace_resource, [{trace_dir, re:replace(InitialTraceDir, "%node%", atom_to_list(node()), [{return, list}])}]};
+                                 {Path,
+                                  wmtrace_resource,
+                                  [{trace_dir, re:replace(InitialTraceDir, "%node%",
+                                                          atom_to_list(node()),
+                                                          [{return, list}])}]
+                                 };
                             (Term) -> Term
                          end,
                          DispatchContent),
@@ -102,30 +107,30 @@ init([]) ->
                  {port, Port},
                  {log_dir, WMLogDir},
                  {dispatch, Dispatch},
-                 {error_handler, platformer.webmachine.error_handler}],
+                 {error_handler, platformer_error_handler}],
 
     Web = {webmachine_mochiweb, {webmachine_mochiweb, start, [WebConfig]},
            permanent, 5000, worker, dynamic},
 
     %% Check that the database is set up (dev purposes only -- later need real release management).
-    platformer.core.db:check_tables(),
+    platformer_db:check_tables(),
 
     %% Reset the db if instructed to; in any case, check that pre-supplied servers are in db
     case lists:member("reset-db", init:get_plain_arguments()) of
-        true -> platformer.core.db:reset();
-        false -> platformer.core.node:load_preconfigured()
+        true -> platformer_db:reset();
+        false -> platformer_node:load_preconfigured()
     end,
 
     %% Create/verify record for own node in db.
-    node:create(node:my_address()),
+    platformer_node:create(platformer_node:my_address()),
 
     %% Announce self to other servers, seek peers, and set up timed announcements and peer searches.
-    node:announce_self(),
-    node:seek_peers(),
+    platformer_node:announce_self(),
+    platformer_node:seek_peers(),
     crone:start([{{daily,{every,{5,min},{between,{12,am},{11,55,pm}}}},
-                  {platformer.core.node,announce_self,[]}}]),
+                  {platformer_node,announce_self,[]}}]),
     crone:start([{{daily,{every,{5,min},{between,{12,am},{11,55,pm}}}},
-                  {platformer.core.node,seek_peers,[]}}]),
+                  {platformer_node,seek_peers,[]}}]),
     
                      
     log4erl:info("Starting up Platformer node listening on port ~B.", [Port]),

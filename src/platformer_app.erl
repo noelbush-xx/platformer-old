@@ -12,7 +12,7 @@
 %% @spec start(_Type, _StartArgs) -> ServerRet
 %% @doc application start callback for platformer.
 start(_Type, _StartArgs) ->
-    sup:start_link().
+    platformer_sup:start_link().
 
 %% @spec stop(_State) -> ServerRet
 %% @doc application stop callback for platformer.

@@ -44,7 +44,7 @@ reset() ->
     mnesia:create_table(pfuser, [{disc_copies, [node()]}, {attributes, record_info(fields, pfuser)}]),
     mnesia:create_table(pfnode, [{disc_copies, [node()]}, {attributes, record_info(fields, pfnode)}]),
     mnesia:create_table(pftoken, [{disc_copies, [node()]}, {attributes, record_info(fields, pftoken)}]),
-    node:load_preconfigured(),
+    platformer_node:load_preconfigured(),
     ok.
 
 transaction(F) ->

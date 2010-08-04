@@ -20,7 +20,7 @@
 delete(Id) ->
     F = fun() ->
                 [Node] = mnesia:read(pfuser, Id, write),
-                mnesia:write(Node#pfnode{status=deleted, last_modified=util:now_int()})
+                mnesia:write(Node#pfnode{status=deleted, last_modified=platformer_util:now_int()})
         end,
     case mnesia:transaction(F) of
         {atomic, _} ->
@@ -58,15 +58,15 @@ create(#pfnode{} = Record, Rating) ->
     
     %% First check whether node record already exists in database.
     {Status, NodeRecord} =
-        case node:get(Id) of
+        case platformer_node:get(Id) of
             not_found ->
                 %% Augment the supplied record to become a full-fledged node record.
                 Node = Record#pfnode{status=active,
                                      id=list_to_binary(Id),
                                      rating=Rating,
-                                     last_modified=util:now_int()},
+                                     last_modified=platformer_util:now_int()},
                 %% log4erl:info("Creating new node with address ~p.", [Address]),
-                case db:write(Node) of
+                case platformer_db:write(Node) of
                     {atomic, ok} ->
                         {ok, Node};
                     {aborted, Error} ->
@@ -103,7 +103,7 @@ get_address(#pfnode{scheme=Scheme, host=Host, port=Port}) ->
 get_id(#pfnode{} = Record) ->
     get_id(get_address(Record));
 get_id(Address) ->
-    string:concat("platformer_node_", util:md5(Address)).
+    string:concat("platformer_node_", platformer_util:md5(Address)).
 
 %% @doc Returns the path that should be used (appended to hostname for URI)
 %% for referring to this node.
@@ -118,13 +118,13 @@ get_path(#pfnode{} = Record) ->
 %%
 %% @spec is_me(pfnode()) -> bool()
 is_me(#pfnode{host=Host, port=Port}) ->
-    case binary_to_list(Host) =:= util:get_param(ip) of
-        true -> Port =:= util:get_param(port);
+    case binary_to_list(Host) =:= platformer_util:get_param(ip) of
+        true -> Port =:= platformer_util:get_param(port);
         false -> false
     end.
 
 me() ->
-    node:get(get_id(my_address())).
+    platformer_node:get(get_id(my_address())).
 
 
 %% @doc Returns a list of all nodes known to this one,
@@ -132,19 +132,19 @@ me() ->
 %%
 %% @spec get_list(bool()) -> [NodeRecord]
 get_list(include_self) ->
-    db:read_all(pfnode).
+    platformer_db:read_all(pfnode).
 
 %% @doc Returns a list of all nodes known to this one, <em>except</em>
 %% the present node itself.
 get_list() ->
-    db:find(qlc:q([X || X <- mnesia:table(pfnode), X#pfnode.id =/= list_to_binary(get_id(my_address()))])).
+    platformer_db:find(qlc:q([X || X <- mnesia:table(pfnode), X#pfnode.id =/= list_to_binary(get_id(my_address()))])).
 
 %% @doc Retrieves a node from its id, or from a constructed
 %% record that contains an id.
 %%
 %% @spec get(string()) -> NodeRecord | not_found
 get(Id) ->
-    Result = db:find(qlc:q([X || X <- mnesia:table(pfnode), X#pfnode.id == list_to_binary([Id])])),
+    Result = platformer_db:find(qlc:q([X || X <- mnesia:table(pfnode), X#pfnode.id == list_to_binary([Id])])),
     case length(Result) of
         1 ->
             hd(Result);
@@ -178,7 +178,7 @@ get_random_list({count, Count}, _, _) when Count < 0 ->
 get_random_list(SampleSize, Criteria, Omit) ->
     MinRating = proplists:get_value(min_rating, Criteria, 0),
     MaxRating = proplists:get_value(max_rating, Criteria, 100),
-    case db:find(qlc:q([X || X <- mnesia:table(pfnode),
+    case platformer_db:find(qlc:q([X || X <- mnesia:table(pfnode),
                              X#pfnode.rating >= MinRating,
                              X#pfnode.rating =< MaxRating,
                              not lists:member(X#pfnode.id, Omit)])) of
@@ -191,7 +191,7 @@ get_random_list(SampleSize, Criteria, Omit) ->
                     {count, Count} -> lists:min([length(Nodes), Count]);
                     _ -> throw({error, "Invalid value for SampleSize"})
                 end,
-            lists:sublist(util:shuffle(Nodes), SublistSize)
+            lists:sublist(platformer_util:shuffle(Nodes), SublistSize)
     end.
 
     
@@ -208,7 +208,7 @@ load_preconfigured() ->
     end.
 
 load_preconfigured([Address|Rest]) ->
-    %% log4erl:debug("Preconfigured node: ~p", [Address]),
+    %% log4erl:debug("Preconfigured platformer_node: ~p", [Address]),
     create(Address),
     load_preconfigured(Rest);
 load_preconfigured([]) -> ok.
@@ -219,7 +219,7 @@ load_preconfigured([]) -> ok.
 %%
 %% @spec my_address() -> string()
 my_address() ->
-    lists:concat(["http://", util:get_param(ip, httpd_socket:resolve()), ":", util:get_param(port, 2010)]).
+    lists:concat(["http://", platformer_util:get_param(ip, httpd_socket:resolve()), ":", platformer_util:get_param(port, 2010)]).
 
 adjust_rating(Node, Adjustment) ->
     CurrentRating = Node#pfnode.rating,
@@ -227,7 +227,7 @@ adjust_rating(Node, Adjustment) ->
     if
         NewRating =/= CurrentRating ->
             %% log4erl:debug("Adjusting rating for node from ~B to ~B.", [CurrentRating, NewRating]),
-            db:write(Node#pfnode{rating=NewRating});
+            platformer_db:write(Node#pfnode{rating=NewRating});
         NewRating =:= CurrentRating ->
             ok
     end.
@@ -236,15 +236,15 @@ adjust_rating(Node, Adjustment) ->
 announce_self() ->
     Json = list_to_binary(
              ?record_to_json(nodespec,
-                             #nodespec{scheme=util:get_param(scheme),
-                                       host=list_to_binary(util:get_param(ip)),
-                                       port=util:get_param(port)})),
-    Nodes = node:get_list(),
+                             #nodespec{scheme=platformer_util:get_param(scheme),
+                                       host=list_to_binary(platformer_util:get_param(ip)),
+                                       port=platformer_util:get_param(port)})),
+    Nodes = platformer_node:get_list(),
     %% log4erl:debug("Announcing myself to ~B peer node(s).", [length(Nodes)]),
     announce_self(Json, Nodes).
 
 announce_self(Json, [Node|Rest])->
-    Address = node:get_address(Node),
+    Address = platformer_node:get_address(Node),
     %% log4erl:debug("Announcing myself to node ~p.", [Address]),
     httpc:request(post, {Address ++ "/node", [], "text/javascript", Json}, [], []),
     announce_self(Json, Rest);
@@ -258,22 +258,22 @@ announce_self(_Json, [])->
 seek_peers() ->
     Nodes = lists:sort(fun(A, B) ->
                                A#pfnode.last_modified < B#pfnode.last_modified end,
-                       node:get_list()),
+                       platformer_node:get_list()),
     Sublist = lists:sublist(Nodes, trunc(length(Nodes) * 0.25 + 1)),
     seek_peers(Sublist).
 
 seek_peers([Node|Rest]) ->
-    Address = node:get_address(Node),
+    Address = platformer_node:get_address(Node),
     %% log4erl:debug("Asking node ~p for its node list.", [Address]),
     case httpc:request(Address ++ "/node/list") of
         {ok, {{_, 200, _}, _, Body}} ->
             %% log4erl:debug("Retrieved node list from ~p; increasing rating.", [Address]),
-            node:adjust_rating(Node, 1),
+            platformer_node:adjust_rating(Node, 1),
             {{<<"nodes">>, Peers}} = jsonerl:decode(Body),
-            node:create_from_list(Peers);
+            platformer_node:create_from_list(Peers);
         _ ->
             %% log4erl:debug("Could not retrieve node list from ~p; reducing rating.", [Address]),
-            node:adjust_rating(Node, -1)
+            platformer_node:adjust_rating(Node, -1)
     end,
     seek_peers(Rest);
 seek_peers([]) ->

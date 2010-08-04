@@ -31,7 +31,7 @@ behaviour_info(callbacks) ->
 behaviour_info(_Other) -> undefined.
 
 is_valid_token(S, Description) ->
-    case util:is_valid_uuid(S) of
+    case platformer_util:is_valid_uuid(S) of
         true -> {true, S};
         false -> {false, Description ++ " must be a valid v4 uuid."}
     end.
@@ -43,7 +43,7 @@ is_valid_priority(S, Description) ->
                 true ->
                     {false, Description ++ " must be positive."};
                 false ->
-                    MaxPriority = util:get_param(memo_priority_max),
+                    MaxPriority = platformer_util:get_param(memo_priority_max),
                     case I > MaxPriority of
                         true ->
                             {false, Description ++ " must be no greater than " ++ integer_to_list(MaxPriority) ++ "."};
@@ -62,10 +62,10 @@ is_valid_priority(S, Description) ->
 %%
 %% @spec check_token(string()) -> ok | already_seen
 check_token(Id) ->
-    case length(db:find(qlc:q([X || X <- mnesia:table(pftoken), X#pftoken.id =:= Id]))) of
+    case length(platformer_db:find(qlc:q([X || X <- mnesia:table(pftoken), X#pftoken.id =:= Id]))) of
         0 ->
-            Token = #pftoken{id=Id, received=util:now_int()},
-            case db:write(Token) of
+            Token = #pftoken{id=Id, received=platformer_util:now_int()},
+            case platformer_db:write(Token) of
                 {atomic, ok} ->
                     ok;
                 {aborted, Error} ->
@@ -93,7 +93,7 @@ propagate(Action, Type, Id, _, #envelope{priority=0}, _, _) ->
     log4erl:debug("Not propagating priority 0 ~p of ~s ~s.", [Action, Type, Id]),
     ok;
 propagate(Action, Type, Id, Body, #envelope{priority=Priority} = Envelope, MandatoryTargets, Omit) when Action =:= put orelse Action =:= delete ->
-    Nodes = lists:append(MandatoryTargets, node:get_random_list({count, Priority}, [], lists:append(Omit, [(node:me())#pfnode.id]))),
+    Nodes = lists:append(MandatoryTargets, platformer_node:get_random_list({count, Priority}, [], lists:append(Omit, [(platformer_node:me())#pfnode.id]))),
     NodeCount = length(Nodes),
     if
         NodeCount > 0 ->
@@ -110,23 +110,23 @@ propagate(Action, Type, Id, Body, #envelope{} = Envelope) ->
     propagate(Action, Type, Id, Body, Envelope, [], []).
 
 propagate_to_nodes([Node|Rest], Action, Type, Id, Body, #envelope{token=Token, priority=Priority} = Envelope) ->
-    case node:is_me(Node) of
+    case platformer_node:is_me(Node) of
         true -> log4erl:debug("No need to propagate to self.");
         false ->
-            Address = node:get_address(Node),
+            Address = platformer_node:get_address(Node),
             log4erl:debug("Propagating ~p of ~s to node ~s.", [Action, Type, Address]),
             Uri = lists:concat([Address, "/", Type, "/", Id]),
             Headers = [{"X-Platformer-Memo-Token", Token},
                        {"X-Platformer-Memo-Priority", Priority},
-                       {"X-Platformer-Memo-Source", node:my_address()}],
+                       {"X-Platformer-Memo-Source", platformer_node:my_address()}],
             if Body =:= undefined ->
                     if Action =:= put ->
                             throw({error, "httpc requires that a PUT have a body."});
                        Action =/= put ->
-                            httpc:request(Action, {Uri, Headers}, util:httpc_standard_http_options(), util:httpc_standard_options())
+                            httpc:request(Action, {Uri, Headers}, platformer_util:httpc_standard_http_options(), platformer_util:httpc_standard_options())
                     end;
                Body =/= undefined ->
-                    httpc:request(Action, {Uri, Headers, "text/javascript", Body}, util:httpc_standard_http_options(), util:httpc_standard_options())
+                    httpc:request(Action, {Uri, Headers, "text/javascript", Body}, platformer_util:httpc_standard_http_options(), platformer_util:httpc_standard_options())
             end
     end,
     propagate_to_nodes(Rest, Action, Type, Id, Body, Envelope);

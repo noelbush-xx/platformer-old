@@ -123,7 +123,7 @@ forbidden(ReqData, Context) ->
         invalid -> {false, ReqData, Context};
         #envelope{token=Token} = Envelope ->
             NC1 = Context#context{envelope = Envelope},
-            case memo:check_token(Token) of
+            case platformer_memo:check_token(Token) of
                 ok ->
                     log4erl:debug("Received token is ok."),
                     case wrq:method(ReqData) of
@@ -154,13 +154,13 @@ malformed_request(ReqData, Context) ->
         'OPTIONS' -> {false, ReqData, Context};
         _ ->
             {Envelope, NRD2} =
-                case common:valid_propagation_envelope(ReqData, false, true) of
+                case platformer_resource_common:valid_propagation_envelope(ReqData, false, true) of
                     {true, Env, NRD1} ->
                         log4erl:debug("Valid propagation envelope provided."),
                         {Env, NRD1};
                     true ->
                         log4erl:debug("No propagation envelope provided; creating a new one."),
-                        {common:new_propagation_envelope(), ReqData};
+                        {platformer_resource_common:new_propagation_envelope(), ReqData};
                     {false, NRD1} ->
                         log4erl:debug("Invalid propagation envelope provided."),
                         {invalid, NRD1}
@@ -181,7 +181,7 @@ malformed_request(ReqData, Context) ->
                                     _ -> {true, wrq:append_to_response_body("Do not include a request body.", NRD2), Context}
                                 end
                         end,
-                        {MF, common:postprocess_rd(NRD3), NC1#context{envelope=Envelope}}
+                        {MF, platformer_resource_common:postprocess_rd(NRD3), NC1#context{envelope=Envelope}}
             end
     end.
 
@@ -211,7 +211,7 @@ options(ReqData, Context) ->
     {[{"Access-Control-Allow-Origin", "*"},
       {"Access-Control-Allow-Methods", string:join(lists:map(fun(A) -> atom_to_list(A) end, AllowedMethods), ", ")},
       {"Access-Control-Allow-Headers", string:join(AllowedHeaders, ", ")}],
-     common:support_preflight(AllowedHeaders, ReqData),
+     platformer_resource_common:support_preflight(AllowedHeaders, ReqData),
      Context}.
 
 %% @doc See {@wmdocs}
@@ -250,7 +250,7 @@ resource_exists(ReqData, Context) ->
             {Found, Status} = apply(Context#context.module, exists, [list_to_binary(Context#context.id), Context#context.envelope]),
             {Found, ReqData, Context#context{status=Status}};
         'DELETE' ->
-            {Found, Status} = apply(Context#context.module, exists, [list_to_binary(Context#context.id), common:new_propagation_envelope()]),
+            {Found, Status} = apply(Context#context.module, exists, [list_to_binary(Context#context.id), platformer_resource_common:new_propagation_envelope()]),
             {Found, ReqData, Context#context{status=Status}};
         'PUT' ->
             {Found, Status} = apply(Context#context.module, exists, [list_to_binary(Context#context.id)]),
@@ -269,7 +269,7 @@ resource_exists(ReqData, Context) ->
 service_available(ReqData, Context) ->
     log4erl:debug("~p request to ~s.", [wrq:method(ReqData), wrq:raw_path(ReqData)]),
     Type = hd(string:tokens(wrq:path(ReqData), "/")),
-    Module = list_to_atom(string:concat("platformer.core.", Type)),
+    Module = list_to_atom(string:concat("platformer_", Type)),
     NC1 = Context#context{type=Type, module=Module},
     {true, ReqData, case wrq:path_info('id', ReqData) of
                         undefined -> NC1;

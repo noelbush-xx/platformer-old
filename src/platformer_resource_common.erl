@@ -13,9 +13,9 @@
 -include_lib("platformer.hrl").
 
 new_propagation_envelope() ->
-    #envelope{token=util:uuid(),
-              priority=util:get_param(memo_priority_max),
-              source=node:my_address()}.
+    #envelope{token=platformer_util:uuid(),
+              priority=platformer_util:get_param(memo_priority_max),
+              source=platformer_node:my_address()}.
 
 %% @doc Validates a webmachine <code>#wm_reqdata()</code> term for a Platformer query:
 %%  Ensure that either:
@@ -31,8 +31,8 @@ new_propagation_envelope() ->
 %% @spec valid_propagation_envelope(wm_reqdata(), bool(), bool()) -> {bool(), {string(), integer(), string()}, wm_reqdata()} | {bool(), wm_reqdata()}
 valid_propagation_envelope(ReqData, Explain, AllowNone) ->
     {Valid, Invalid, NRD1, Values} =
-        verify_headers([{"X-Platformer-Memo-Token", fun(S) -> memo:is_valid_token(S, "X-Platformer-Memo-Token") end},
-                        {"X-Platformer-Memo-Priority", fun(S) -> memo:is_valid_priority(S, "X-Platformer-Memo-Priority") end}
+        verify_headers([{"X-Platformer-Memo-Token", fun(S) -> platformer_memo:is_valid_token(S, "X-Platformer-Memo-Token") end},
+                        {"X-Platformer-Memo-Priority", fun(S) -> platformer_memo:is_valid_priority(S, "X-Platformer-Memo-Priority") end}
                        ], ReqData, Explain),
     if
         Valid == 0 andalso Invalid == 0 ->
@@ -124,8 +124,8 @@ postprocess_rd(ReqData) ->
     case wrq:get_req_header("X-Platformer-Memo-Source", ReqData) of
         undefined -> true;
         Address ->
-            case node:get(util:md5(Address)) of
-                not_found -> node:create(Address);
+            case platformer_node:get(platformer_util:md5(Address)) of
+                not_found -> platformer_node:create(Address);
                 _Server -> true
             end
     end,
