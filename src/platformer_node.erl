@@ -19,8 +19,8 @@
 %% @spec delete(binary()) -> bool()
 delete(Id) ->
     F = fun() ->
-                [Node] = mnesia:read(pfuser, Id, write),
-                mnesia:write(Node#pfnode{status=deleted, last_modified=platformer_util:now_int()})
+                [Node] = mnesia:read(platformer_user, Id, write),
+                mnesia:write(Node#platformer_node{status=deleted, last_modified=platformer_util:now_int()})
         end,
     case mnesia:transaction(F) of
         {atomic, _} ->
@@ -45,14 +45,14 @@ create(NodeSpec) ->
     create(NodeSpec, 100).
 
 %% @doc Creates a node from the given information and the specified
-%%  rating.  A tuple will be parsed as a #pfnode record, first
+%%  rating.  A tuple will be parsed as a #platformer_node record, first
 %%  converted if necessary; a string will be parsed as an address
 %%  (e.g., "http://localhost:8000").  The <code>is_me</code> return
 %%  result indicates that the given specification indicates the
 %%  current node and that no new node was created.
 %%
 %% @spec create(term() | tuple() | string(), integer()) -> {is_me | ok | already_exists, node()} | {error, string()}
-create(#pfnode{} = Record, Rating) ->
+create(#platformer_node{} = Record, Rating) ->
     Address = get_address(Record),
     Id = get_id(Address),
     
@@ -61,7 +61,7 @@ create(#pfnode{} = Record, Rating) ->
         case platformer_node:get(Id) of
             not_found ->
                 %% Augment the supplied record to become a full-fledged node record.
-                Node = Record#pfnode{status=active,
+                Node = Record#platformer_node{status=active,
                                      id=list_to_binary(Id),
                                      rating=Rating,
                                      last_modified=platformer_util:now_int()},
@@ -83,24 +83,24 @@ create(#pfnode{} = Record, Rating) ->
 
 create(Tuple, Rating) when is_tuple(Tuple) ->
     Proplist = [{binary_to_atom(X, latin1), Y} || {X, Y} <- tuple_to_list(Tuple)],
-    RawRecord = list_to_tuple([pfnode|[proplists:get_value(X, Proplist) || X <- record_info(fields, pfnode)]]),
-    Record = RawRecord#pfnode{scheme=binary_to_atom(RawRecord#pfnode.scheme, latin1)},
+    RawRecord = list_to_tuple([platformer_node|[proplists:get_value(X, Proplist) || X <- record_info(fields, platformer_node)]]),
+    Record = RawRecord#platformer_node{scheme=binary_to_atom(RawRecord#platformer_node.scheme, latin1)},
     create(Record, Rating);
 create(Address, Rating) when is_list(Address) ->
     {Scheme, _UserInfo, Host, Port, _Path, _Query} = http_uri:parse(Address),
-    create(#pfnode{scheme=Scheme, host=list_to_binary(Host), port=Port}, Rating).
+    create(#platformer_node{scheme=Scheme, host=list_to_binary(Host), port=Port}, Rating).
 
 %% @doc Constructs the address of the given node record.
 %%
-%% @spec get_address(#pfnode{}) -> string()
-get_address(#pfnode{scheme=Scheme, host=Host, port=Port}) ->
+%% @spec get_address(#platformer_node{}) -> string()
+get_address(#platformer_node{scheme=Scheme, host=Host, port=Port}) ->
     lists:concat([Scheme, "://", binary_to_list(Host), ":", Port]).
 
 %% @doc Constructs the id representing the given node.  A string
-%% will be interpreted as an address, a record as a pfnode record.
+%% will be interpreted as an address, a record as a platformer_node record.
 %%
 %% @spec get_id(NodeRecord | string()) -> string()
-get_id(#pfnode{} = Record) ->
+get_id(#platformer_node{} = Record) ->
     get_id(get_address(Record));
 get_id(Address) ->
     string:concat("platformer_node_", platformer_util:md5(Address)).
@@ -109,15 +109,15 @@ get_id(Address) ->
 %% for referring to this node.
 %%
 %% @spec get_path(NodeRecord) -> string()
-get_path(#pfnode{id=Id}) when Id =/= undefined ->
+get_path(#platformer_node{id=Id}) when Id =/= undefined ->
     "/node/" ++ binary_to_list(Id);
-get_path(#pfnode{} = Record) ->
+get_path(#platformer_node{} = Record) ->
     "/node/" ++ get_id(Record).
 
 %% @doc Indicates whether the given node record refers to the current node.
 %%
-%% @spec is_me(pfnode()) -> bool()
-is_me(#pfnode{host=Host, port=Port}) ->
+%% @spec is_me(platformer_node()) -> bool()
+is_me(#platformer_node{host=Host, port=Port}) ->
     case binary_to_list(Host) =:= platformer_util:get_param(ip) of
         true -> Port =:= platformer_util:get_param(port);
         false -> false
@@ -132,19 +132,19 @@ me() ->
 %%
 %% @spec get_list(bool()) -> [NodeRecord]
 get_list(include_self) ->
-    platformer_db:read_all(pfnode).
+    platformer_db:read_all(platformer_node).
 
 %% @doc Returns a list of all nodes known to this one, <em>except</em>
 %% the present node itself.
 get_list() ->
-    platformer_db:find(qlc:q([X || X <- mnesia:table(pfnode), X#pfnode.id =/= list_to_binary(get_id(my_address()))])).
+    platformer_db:find(qlc:q([X || X <- mnesia:table(platformer_node), X#platformer_node.id =/= list_to_binary(get_id(my_address()))])).
 
 %% @doc Retrieves a node from its id, or from a constructed
 %% record that contains an id.
 %%
 %% @spec get(string()) -> NodeRecord | not_found
 get(Id) ->
-    Result = platformer_db:find(qlc:q([X || X <- mnesia:table(pfnode), X#pfnode.id == list_to_binary([Id])])),
+    Result = platformer_db:find(qlc:q([X || X <- mnesia:table(platformer_node), X#platformer_node.id == list_to_binary([Id])])),
     case length(Result) of
         1 ->
             hd(Result);
@@ -178,10 +178,10 @@ get_random_list({count, Count}, _, _) when Count < 0 ->
 get_random_list(SampleSize, Criteria, Omit) ->
     MinRating = proplists:get_value(min_rating, Criteria, 0),
     MaxRating = proplists:get_value(max_rating, Criteria, 100),
-    case platformer_db:find(qlc:q([X || X <- mnesia:table(pfnode),
-                             X#pfnode.rating >= MinRating,
-                             X#pfnode.rating =< MaxRating,
-                             not lists:member(X#pfnode.id, Omit)])) of
+    case platformer_db:find(qlc:q([X || X <- mnesia:table(platformer_node),
+                             X#platformer_node.rating >= MinRating,
+                             X#platformer_node.rating =< MaxRating,
+                             not lists:member(X#platformer_node.id, Omit)])) of
         undefined -> [];
         [] -> [];
         Nodes ->
@@ -222,12 +222,12 @@ my_address() ->
     lists:concat(["http://", platformer_util:get_param(ip, httpd_socket:resolve()), ":", platformer_util:get_param(port, 2010)]).
 
 adjust_rating(Node, Adjustment) ->
-    CurrentRating = Node#pfnode.rating,
+    CurrentRating = Node#platformer_node.rating,
     NewRating = lists:min([100, lists:max([0, CurrentRating + Adjustment])]),
     if
         NewRating =/= CurrentRating ->
             %% log4erl:debug("Adjusting rating for node from ~B to ~B.", [CurrentRating, NewRating]),
-            platformer_db:write(Node#pfnode{rating=NewRating});
+            platformer_db:write(Node#platformer_node{rating=NewRating});
         NewRating =:= CurrentRating ->
             ok
     end.
@@ -257,7 +257,7 @@ announce_self(_Json, [])->
 %% the 25% least recently contacted nodes.
 seek_peers() ->
     Nodes = lists:sort(fun(A, B) ->
-                               A#pfnode.last_modified < B#pfnode.last_modified end,
+                               A#platformer_node.last_modified < B#platformer_node.last_modified end,
                        platformer_node:get_list()),
     Sublist = lists:sublist(Nodes, trunc(length(Nodes) * 0.25 + 1)),
     seek_peers(Sublist).

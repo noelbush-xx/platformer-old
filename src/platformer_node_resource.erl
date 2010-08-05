@@ -95,7 +95,7 @@ malformed_request(ReqData, Context) ->
                         %% Since we have to construct the record to determine its validity, we'll hang onto it
                         %% (We fix the scheme as an atom while we're at it.)
                         #nodespec{scheme=Scheme, host=Host, port=Port} ->
-                            Record = #pfnode{scheme = binary_to_atom(Scheme, latin1), host = Host, port = Port},
+                            Record = #platformer_node{scheme = binary_to_atom(Scheme, latin1), host = Host, port = Port},
                             {false, ReqData,
                              Context#context{record=Record}}
                     catch error ->
@@ -140,7 +140,7 @@ post_is_create(ReqData, Context) ->
 
 previously_existed(ReqData, Context) ->
     Node = Context#context.record,
-    {case Node#pfnode.status of deleted -> true; _ -> false end,
+    {case Node#platformer_node.status of deleted -> true; _ -> false end,
      ReqData,
      Context}.
 
@@ -175,12 +175,12 @@ to_json(ReqData, Context) ->
                      %% Of the known nodes with rating 75 or greater,
                      %% share a random sample of 25%.
                      NodeRecords = platformer_node:get_random_list({percentage, 25}, [{min_rating, 75}]),
-                     Nodes = [?record_to_struct(pfnode, Node) || Node <- NodeRecords],
+                     Nodes = [?record_to_struct(platformer_node, Node) || Node <- NodeRecords],
                      jsonerl:encode(?record_to_struct(nodes, #nodes{nodes=Nodes}));
                  Id ->
                      case platformer_node:get(Id) of
                          undefined -> <<>>;
-                         Node -> ?record_to_json(pfnode, Node)
+                         Node -> ?record_to_json(platformer_node, Node)
                      end
              end;
          _ -> <<>>

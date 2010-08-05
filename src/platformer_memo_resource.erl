@@ -247,13 +247,16 @@ previously_existed(ReqData, Context) ->
 resource_exists(ReqData, Context) ->
     case wrq:method(ReqData) of
         'HEAD' ->
-            {Found, Status} = apply(Context#context.module, exists, [list_to_binary(Context#context.id), Context#context.envelope]),
+            {Found, Status} = apply(Context#context.module, exists,
+                                    [list_to_binary(Context#context.id), Context#context.envelope]),
             {Found, ReqData, Context#context{status=Status}};
         'DELETE' ->
-            {Found, Status} = apply(Context#context.module, exists, [list_to_binary(Context#context.id), platformer_resource_common:new_propagation_envelope()]),
+            {Found, Status} = apply(Context#context.module, exists,
+                                    [list_to_binary(Context#context.id), platformer_resource_common:new_propagation_envelope()]),
             {Found, ReqData, Context#context{status=Status}};
         'PUT' ->
-            {Found, Status} = apply(Context#context.module, exists, [list_to_binary(Context#context.id)]),
+            {Found, Status} = apply(Context#context.module, exists,
+                                    [list_to_binary(Context#context.id)]),
             {Found, ReqData, Context#context{status=Status}};
         _ ->
             {false, ReqData, Context}

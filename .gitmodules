@@ -1,12 +1,9 @@
 [submodule "src/external/jsonerl"]
 	path = src/external/jsonerl
 	url = http://github.com/lambder/jsonerl.git
-[submodule "deps/log4erl"]
-	path = deps/log4erl
-	url = git@github.com:noelbush/log4erl.git
-[submodule "deps/getopt"]
-	path = deps/getopt
-	url = http://github.com/jcomellas/getopt.git
 [submodule "src/external/erlang-uuid"]
 	path = src/external/erlang-uuid
 	url = http://github.com/martindemello/erlang-uuid.git
+[submodule "src/external/getopt"]
+	path = src/external/getopt
+	url = http://github.com/jcomellas/getopt.git

@@ -18,6 +18,7 @@
              platformer_db,
              platformer_memo,
              platformer_node,
+             platformer_position,
              platformer_user,
              platformer_util,
              %% Externals

@@ -1,39 +1,15 @@
-%%-*- mode: erlang -*-
-{application, platformer,
- [
-  {description, "platformer"},
-  {vsn, "1"},
-  {modules, [
-             %% OTP- and Webmachine- related setup modules
-             platformer,
-             platformer_app,
-             platformer_sup,
-             %% Webmachine resources
-             platformer_ping_resource,
-             platformer_node_resource,
-             platformer_memo_resource,
-             platformer_resource_common,
-             platformer_error_handler,
-             %% Core application modules
-             platformer_db,
-             platformer_memo,
-             platformer_node,
-             platformer_user,
-             platformer_util,
-             %% Externals
-             crone,
-             jsonerl,
-             timed_supervisor,
-             uuid
-            ]},
-  {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib,
-                  crypto,
-                  mochiweb,
-                  webmachine
-                 ]},
-  {mod, {platformer_app, []}},
-  {env, []}
- ]}.
+{application,platformer,
+             [{description,"platformer"},
+              {vsn,"1"},
+              {modules,[crone,ex1,getopt,getopt_test,jsonerl,platformer,
+                        platformer_app,platformer_db,platformer_error_handler,
+                        platformer_memo,platformer_memo_resource,
+                        platformer_node,platformer_node_resource,
+                        platformer_ping_resource,platformer_position,
+                        platformer_resource_common,platformer_sup,
+                        platformer_user,platformer_util,rebar_test,
+                        timed_supervisor,uuid]},
+              {registered,[]},
+              {applications,[kernel,stdlib,crypto,mochiweb,webmachine]},
+              {mod,{platformer_app,[]}},
+              {env,[]}]}.

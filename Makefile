@@ -9,7 +9,6 @@ all: deps
 	@./rebar compile
 
 deps:
-	@cp ./src/platformer.app ./ebin/
 	@./rebar get-deps
 	@rm -f deps/log4erl/ebin/mochinum.beam # Already provided by mochiweb
 

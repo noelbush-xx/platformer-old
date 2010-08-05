@@ -16,143 +16,38 @@
 %%
 %% @spec create(envelope()) -> {Userid::string(), Path::string()}
 create(#envelope{} = Envelope) ->
-    log4erl:debug("Creating new user."),
-    IdString = string:concat("platformer_user_", platformer_util:uuid()),
-    create(IdString, Envelope).
+    platformer_memo:create("user", Envelope).
 
 %% @doc Create a local record of a user that already exists somewhere else.
 %%
-%% @spec create(Id::string(), envelope()) -> {Userid::string(), Path::string()}
-create(IdString, #envelope{priority=Priority, source=Source} = Envelope) ->
-    Id = list_to_binary(IdString),
-    User = #pfuser{id=Id, status=active, last_modified=platformer_util:now_int(), source=Source},
-    case platformer_db:write(User) of
-        {atomic, ok} ->
-            log4erl:debug("Created new user ~s with priority ~B.", [IdString, Priority]),
-            spawn_link(platformer_memo, propagate, [put, "user", IdString, platformer_user:to_json(IdString), Envelope]),
-            {Id, string:concat("/user/", IdString)};
-        {aborted, Error} ->
-            log4erl:debug("Error in creating user ~s: ~p", [IdString, Error]),
-            throw(Error)
-    end.
+%% @spec create(string(), envelope()) -> {Userid::string(), Path::string()}
+create(Id, #envelope{source=Source} = Envelope) ->
+    User = #platformer_user{id=list_to_binary(Id), status=active, last_modified=platformer_util:now_int(), source=Source},
+    platformer_memo:create("user", Id, User, Envelope).
 
 %% @doc Mark a local record of a user as deleted.
 %%
-%% @spec delete(Id::string(), envelope()) -> none()
-delete(IdString, #envelope{} = Envelope) ->
-    log4erl:debug("Delete user ~p.", [IdString]),
-    Id = list_to_binary(IdString),
-    case platformer_user:get(Id) of
-        not_found -> log4erl:debug("User ~s not found locally; could not delete.", [IdString]);
-        User ->
-            UserSource = User#pfuser.source,
-            F = fun() ->
-                        mnesia:write(User#pfuser{status=deleted, last_modified=platformer_util:now_int()})
-                end,
-            case mnesia:transaction(F) of
-                {atomic, ok} ->
-                    log4erl:debug("Deleted user ~s locally.", [IdString]);
-                {aborted, _Error} ->
-                    log4erl:debug("Could not delete user ~s locally.", [IdString])
-            end,
-            log4erl:debug("Propagating deletion memo."),
-            
-            Source = platformer_node:get(platformer_node:get_id((UserSource))),
-            spawn(platformer_memo, propagate, [delete, "user", IdString, Envelope,
-                                                    case platformer_node:is_me(Source) of true -> []; false -> [Source] end,
-                                                    []])
-    end.
+%% @spec delete(Id::string(), envelope()) -> ok | {error, Error}
+delete(Id, #envelope{} = Envelope) ->
+    platformer_memo:delete("user", Id, Envelope).
 
 %% @doc Get a user by id.
 %%
-%% @spec get(string()) -> pfuser()
+%% @spec get(string()) -> platformer_user()
 get(Id) ->
-    Result = platformer_db:find(qlc:q([X || X <- mnesia:table(pfuser), X#pfuser.id == Id])),
-    case length(Result) of
-        1 ->
-            log4erl:debug("Record for user ~s found in database.", [Id]),
-            hd(Result);
-        0 ->
-            log4erl:debug("User ~s does not exist locally.", [Id]),
-            not_found;
-        _ ->
-            throw({codingError, "Multiple results found for user ~s!", [Id]})
-    end.
+    platformer_memo:get("user", Id).
 
 %% @doc Check whether there is a local record for a user with the given id.
 %%  No attempt is made to check remove servers (For that, use {@link exists/2}.)
 %%
 %% @spec exists(string()) -> {bool(), active | deleted}
 exists(Id) ->
-    log4erl:debug("Checking for local record of user ~s", [Id]),
-    case platformer_user:get(Id) of
-        not_found -> {false, unknown};
-        User ->
-            case User#pfuser.status of
-                active ->
-                    log4erl:debug("User ~s is active.", [Id]),
-                    {true, active};
-                deleted ->
-                    log4erl:debug("User ~s was previously deleted.", [Id]),
-                    {false, deleted}
-            end
-    end.
+    platformer_memo:exists("user", Id).
     
 %% @spec exists(binary(), envelope()) -> {bool(), active | deleted}
 exists(Id, #envelope{} = Envelope) ->
-    %% First check the local database.
-    case exists(Id) of
-        {true, Status} -> {true, Status};
-        {false, deleted} -> {false, deleted};
-        {false, unknown} ->
-            exists(Id, platformer_node:get_list(), Envelope)
-    end.
+    platformer_memo:exists("user", Id, Envelope).
     
-%% @spec exists(binary(), [pfnode()], envelope()) -> {bool(), active | deleted}
-exists(Id, Nodes, #envelope{} = Envelope) when is_binary(Id) ->
-    log4erl:debug("Checking up to ~B other nodes for existence of user ~s", [length(Nodes), Id]),
-    exists(binary_to_list(Id), Nodes, Envelope);
-
-exists(Id, [#pfnode{} = Node|Nodes], #envelope{token=Token, priority=Priority} = Envelope) ->
-    case platformer_node:is_me(Node) of
-        false ->
-            Address = platformer_node:get_address(Node),
-            log4erl:debug("Checking node at ~s for user ~s.", [Address, Id]),
-            case httpc:request(head, {lists:concat([Address, "/user/", Id]),
-                                      [{"X-Platformer-Memo-Token", Token},
-                                       {"X-Platformer-Memo-Priority", integer_to_list(Priority)},
-                                       {"X-Platformer-Memo-Source", platformer_node:my_address()}]},
-                               platformer_util:httpc_standard_http_options(), platformer_util:httpc_standard_options()) of
-                {ok, {{_, Status, _}, _, _}} ->
-                    case Status of
-                        200 ->
-                            log4erl:debug("User ~s found at node ~s.", [Id, Address]),
-                            % Add this user to local db (without propagating)
-                            create(Id, Envelope#envelope{priority=0, source=Address}),
-                            {true, active};
-                        410 ->
-                            log4erl:debug("User ~s was deleted according to node ~s.", [Id, Address]),
-                            %% TODO: Add a deleted record to our db (?)
-                            {false, deleted};
-                        _ ->
-                            log4erl:debug("Node ~s returns status ~B for user ~s; checking other nodes.", [Address, Status, Id]),
-                            exists(Id, Nodes, Envelope)
-                    end;
-                {error, timeout} ->
-                    log4erl:debug("Request timed out when checking node ~s for user ~s.", [Address, Id]),
-                    exists(Id, Nodes, Envelope);
-                Result ->
-                    log4erl:debug("An unexpected result was obtained when checking node ~s for user ~s: ~p", [Address, Id, Result]),
-                    exists(Id, Nodes, Envelope)
-            end;
-        true ->
-            log4erl:debug("Skipping check of self."),
-            exists(Id, Nodes, Envelope)
-    end;
-
-exists(_Id, [], _) ->
-    log4erl:debug("No more nodes to check."),
-    {false, unknown}.
 
 %% @doc Is the given id valid for a user?
 %%
@@ -166,4 +61,4 @@ is_valid_id(Id) ->
 %%
 %% @spec to_json(string()) -> string()
 to_json(Id) ->
-    jsonerl:encode({{user, {{id, Id}}}}).
+    jsonerl:encode({{user, {{id, list_to_binary(Id)}}}}).

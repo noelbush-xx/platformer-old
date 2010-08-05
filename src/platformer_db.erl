@@ -9,7 +9,7 @@
 %% the tables aren't there, it calls reset.
 check_tables() ->
     case mnesia:system_info(tables) of
-        [query_token, pfnode, pfuser, schema] ->
+        [query_token, platformer_node, platformer_user, schema] ->
             log4erl:debug("Database tables are present."),
             ok;
         _ ->
@@ -41,9 +41,9 @@ reset() ->
     mnesia:create_schema([node()]),
     mnesia:start(),
     
-    mnesia:create_table(pfuser, [{disc_copies, [node()]}, {attributes, record_info(fields, pfuser)}]),
-    mnesia:create_table(pfnode, [{disc_copies, [node()]}, {attributes, record_info(fields, pfnode)}]),
-    mnesia:create_table(pftoken, [{disc_copies, [node()]}, {attributes, record_info(fields, pftoken)}]),
+    mnesia:create_table(platformer_user, [{disc_copies, [node()]}, {attributes, record_info(fields, platformer_user)}]),
+    mnesia:create_table(platformer_node, [{disc_copies, [node()]}, {attributes, record_info(fields, platformer_node)}]),
+    mnesia:create_table(platformer_token, [{disc_copies, [node()]}, {attributes, record_info(fields, platformer_token)}]),
     platformer_node:load_preconfigured(),
     ok.
 
