@@ -132,6 +132,9 @@ case "$@" in
             pid=`cat $pidfile`
             if [ -z "$QUIET" ]; then
                 echo -n "  ...pid $pid...."
+                kill $pid
+            else
+                kill $pid 2>&1 /dev/null
             fi
             kill $pid
             if [ -z "$QUIET" ]; then
