@@ -80,8 +80,9 @@ delete_completed(ReqData, Context) ->
 delete_resource(ReqData, #context{envelope=Envelope} = Context) ->
     log4erl:debug("Deleting ~s ~s, as per propagation request with priority ~B.",
                   [Context#context.type, Context#context.id, Envelope#envelope.priority]),
-    apply(Context#context.module, delete, [Context#context.id, Envelope]),
-    {true, ReqData, Context}.
+    {apply(Context#context.module, delete, [Context#context.id, Envelope]) =:= ok,
+     ReqData,
+     Context}.
 
 %% @doc Handle creation or update of items from PUT requests.
 %%

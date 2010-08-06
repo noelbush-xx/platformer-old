@@ -60,25 +60,32 @@ create(Type, Id, Record, #envelope{priority=Priority} = Envelope) ->
     end.
 
 
-%% @doc Mark a local record of a memo as deleted.
+%% @doc Mark a local record of a memo as deleted and propagate the
+%% deletion.  The return value reflects the success of the local
+%% deletion, not the propagation.
 %%
-%% @spec delete(string(), string(), envelope()) -> none()
+%% @spec delete(string(), string(), envelope()) -> ok | {error, Reason}
 delete(Type, Id, #envelope{} = Envelope) ->
     log4erl:debug("Delete ~s ~p.", [Type, Id]),
     case apply(memo_module(Type), get, [list_to_binary(Id)]) of
-        not_found -> log4erl:debug("~s ~s not found locally; could not delete.", [Type, Id]);
+        not_found ->
+            log4erl:debug("~s ~s not found locally; could not delete.", [Type, Id]),
+            {error, not_found};
         Record ->
             RecordSource = platformer_memo:'#get-'(source, Record),
             F = fun() ->
-                        mnesia:write(platformer_memo:'#from-list'([{status, deleted},
+                        mnesia:write(platformer_memo:'#fromlist-'([{status, deleted},
                                                                    {last_modified, platformer_util:now_int()}], Record))
                 end,
-            case mnesia:transaction(F) of
-                {atomic, ok} ->
-                    log4erl:debug("Deleted ~s ~s locally.", [Type, Id]);
-                {aborted, _Error} ->
-                    log4erl:debug("Could not delete ~s ~s locally.", [Type, Id])
-            end,
+            LocalResult = 
+                case mnesia:transaction(F) of
+                    {atomic, ok} ->
+                        log4erl:debug("Deleted ~s ~s locally.", [Type, Id]),
+                        ok;
+                    {aborted, Error} ->
+                        log4erl:debug("Could not delete ~s ~s locally. Error: ~p", [Type, Id, Error]),
+                        {error, Error}
+                end,
             log4erl:debug("Propagating deletion memo."),
             
             SourceNode = platformer_node:get(platformer_node:get_id((RecordSource))),
@@ -87,7 +94,8 @@ delete(Type, Id, #envelope{} = Envelope) ->
                                                         true -> [];
                                                         false -> [SourceNode]
                                                     end,
-                                               []])
+                                               []]),
+            LocalResult
     end.
 
 %% @doc Get a memo by id.
