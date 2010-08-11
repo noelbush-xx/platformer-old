@@ -1,17 +1,27 @@
+%% @doc Represents a node in Platformer.  Implements the memo behavior
+%% so information about nodes can be passed around like other
+%% information in Platformer.
+%%
 %% @author Noel Bush <noel@platformer.org>
 %% @copyright 2010 Noel Bush.
 
 -module(platformer_node).
+-behaviour(platformer_memo).
+
+ %% Exports required by platformer_memo.
+%%-export([create/1, create/2, delete/2, exists/1, exists/2, get/1, is_valid_id/1, to_json/1]).
+-export([create/1, create/2, get/1]).
+
+%% Other exports specific to nodes.
+-export([adjust_rating/2, create_from_list/1, me/0,
+         delete/1, load_preconfigured/0, my_address/0, get_address/1,
+         get_id/1, get_list/0, get_list/1, get_random_list/1, get_random_list/2,
+         get_random_list/3, get_other_lists/0, get_path/1, is_me/1, announce_self/0,
+         seek_peers/0]).
 
 -include_lib("stdlib/include/qlc.hrl").
 -include_lib("jsonerl.hrl").
 -include_lib("platformer.hrl").
-
--export([adjust_rating/2, create/1, create_from_list/1, get/1, me/0,
-         delete/1, load_preconfigured/0, my_address/0, get_address/1,
-         get_id/1, get_list/0, get_list/1, get_random_list/1, get_random_list/2,
-         get_random_list/3, get_path/1, is_me/1, announce_self/0,
-         seek_peers/0]).
 
 %% @doc Deletes a node identified by an id.  Return value indicates
 %% whether the operation succeeded.
@@ -90,6 +100,9 @@ create(Address, Rating) when is_list(Address) ->
     {Scheme, _UserInfo, Host, Port, _Path, _Query} = http_uri:parse(Address),
     create(#platformer_node{scheme=Scheme, host=list_to_binary(Host), port=Port}, Rating).
 
+get(Id) ->
+    platformer_memo:get("node", Id).
+
 %% @doc Constructs the address of the given node record.
 %%
 %% @spec get_address(#platformer_node{}) -> string()
@@ -118,10 +131,18 @@ get_path(#platformer_node{} = Record) ->
 %%
 %% @spec is_me(platformer_node()) -> bool()
 is_me(#platformer_node{host=Host, port=Port}) ->
-    case binary_to_list(Host) =:= platformer_util:get_param(ip) of
+    is_me(binary_to_list(Host), Port);
+is_me(Address) ->
+    case http_uri:parse(Address) of
+        {_Scheme, _UserInfo, Host, Port, _Path, _Query} ->
+            is_me(Host, Port);
+        {error, {malformed_url, AbsURI}} -> {error, {malformed_url, AbsURI}}
+    end.
+is_me(Host, Port) ->
+    case Host =:= platformer_util:get_param(ip) of
         true -> Port =:= platformer_util:get_param(port);
         false -> false
-    end.
+    end.    
 
 me() ->
     platformer_node:get(get_id(my_address())).
@@ -138,19 +159,6 @@ get_list(include_self) ->
 %% the present node itself.
 get_list() ->
     platformer_db:find(qlc:q([X || X <- mnesia:table(platformer_node), X#platformer_node.id =/= list_to_binary(get_id(my_address()))])).
-
-%% @doc Retrieves a node from its id, or from a constructed
-%% record that contains an id.
-%%
-%% @spec get(string()) -> NodeRecord | not_found
-get(Id) ->
-    Result = platformer_db:find(qlc:q([X || X <- mnesia:table(platformer_node), X#platformer_node.id == list_to_binary([Id])])),
-    case length(Result) of
-        1 ->
-            hd(Result);
-        0 ->
-            not_found
-    end.
 
 %% @doc Gets a random list of nodes known to this node.  The
 %% <code>SampleSize</code> may be specified as <code>{percentage,
@@ -193,6 +201,25 @@ get_random_list(SampleSize, Criteria, Omit) ->
                 end,
             lists:sublist(platformer_util:shuffle(Nodes), SublistSize)
     end.
+
+%% @doc Queries other known nodes for their node lists, and adds any
+%% new ones found to ours.  Returns the list of newly discovered
+%% nodes.
+%%
+%% @spec get_other_lists() -> [platformer_node()]
+get_other_lists() ->
+    get_other_list(get_list(), []).
+
+get_other_list([Node|Rest], Acc) ->
+    Address = get_address(Node),
+    case httpc:request(Address ++ "/node/list") of
+        {error, Reason} ->
+            log4erl:error("Could not get node list from ~s. Error:~n~p", [Address, Reason]);
+        {ok, Result} ->
+            log4erl:debug("Node list from ~s:~n~p", [Address, jsonerl:decode(Result)])
+    end,
+    get_other_list(Rest, [[]|Acc]);
+get_other_list([], Acc) -> Acc.
 
     
 %% @doc Ensures any preconfigured nodes are in the database.

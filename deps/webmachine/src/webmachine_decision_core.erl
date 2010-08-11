@@ -405,7 +405,8 @@ decision(v3n11) ->
                 undefined -> error_response("post_is_create w/o create_path");
                 NewPath ->
                     case is_list(NewPath) of
-                        false -> error_response("create_path not a string");
+                        false ->
+                            error_response(lists:flatten(io_lib:format("create_path result not a string: ~p", [NewPath])));
                         true ->
                             wrcall({set_disp_path, NewPath}),
                             Res = accept_helper(),

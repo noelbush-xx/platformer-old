@@ -130,18 +130,20 @@ case "$@" in
         fi
         for pidfile in `find $PRIV_DIR/pid -type f`; do
             pid=`cat $pidfile`
-            if [ -z "$QUIET" ]; then
-                echo -n "  ...pid $pid...."
-                kill $pid
-            else
-                kill $pid 2>&1 /dev/null
-            fi
-            kill $pid
-            if [ -z "$QUIET" ]; then
-                if [ $? -eq 0 ]; then
-                    echo "success."
+            if [ -n "$pid" ]; then
+                if [ -z "$QUIET" ]; then
+                    echo -n "  ...pid $pid...."
+                    kill $pid
                 else
-                    echo "failed."
+                    kill $pid 2>&1 /dev/null
+                fi
+                kill $pid
+                if [ -z "$QUIET" ]; then
+                    if [ $? -eq 0 ]; then
+                        echo "success."
+                    else
+                        echo "failed."
+                    fi
                 fi
             fi
             rm $pidfile

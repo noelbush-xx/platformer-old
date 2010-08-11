@@ -80,7 +80,7 @@ delete_completed(ReqData, Context) ->
 delete_resource(ReqData, #context{envelope=Envelope} = Context) ->
     log4erl:debug("Deleting ~s ~s, as per propagation request with priority ~B.",
                   [Context#context.type, Context#context.id, Envelope#envelope.priority]),
-    {apply(Context#context.module, delete, [Context#context.id, Envelope]) =:= ok,
+    {apply(Context#context.module, delete, [list_to_binary(Context#context.id), Envelope]) =:= ok,
      ReqData,
      Context}.
 
@@ -126,20 +126,27 @@ forbidden(ReqData, Context) ->
             NC1 = Context#context{envelope = Envelope},
             case platformer_memo:check_token(Token) of
                 ok ->
-                    log4erl:debug("Received token is ok."),
-                    case wrq:method(ReqData) of
-                        'PUT' ->
-                            case apply(NC1#context.module, is_valid_id, [NC1#context.id]) of
+                    %%log4erl:debug("Token is ok."),
+                    case NC1#context.id of
+                        undefined -> {false, ReqData, Context};
+                        Id ->
+                            case apply(NC1#context.module, is_valid_id, [Id]) of
                                 true ->
                                     {false, ReqData, NC1};
                                 false ->
-                                    {true, wrq:append_to_response_body(NC1#context.id ++ " is not a valid id for this type of resource.", ReqData), NC1}
-                            end;
-                        _ -> {false, ReqData, NC1}
+                                    {true,
+                                     case wrq:method(ReqData) of
+                                         'HEAD' -> ReqData;
+                                         _ ->
+                                             wrq:append_to_response_body(
+                                               NC1#context.id ++ " is not a valid id for this type of resource.", ReqData)
+                                     end,
+                                     NC1}
+                            end
                     end;
                 already_seen ->
                     log4erl:debug("Token was already seen: ~s", [Token]),
-                    {true, wrq:append_to_response_body("This token has already been seen.", ReqData), NC1}
+                    {true, ReqData, NC1}
             end;
         undefined -> {false, ReqData, Context#context{envelope=invalid}}
     end.
@@ -157,10 +164,10 @@ malformed_request(ReqData, Context) ->
             {Envelope, NRD2} =
                 case platformer_resource_common:valid_propagation_envelope(ReqData, false, true) of
                     {true, Env, NRD1} ->
-                        log4erl:debug("Valid propagation envelope provided."),
+                        %%log4erl:debug("Valid propagation envelope provided."),
                         {Env, NRD1};
                     true ->
-                        log4erl:debug("No propagation envelope provided; creating a new one."),
+                        %%log4erl:debug("No propagation envelope provided; creating a new one."),
                         {platformer_resource_common:new_propagation_envelope(), ReqData};
                     {false, NRD1} ->
                         log4erl:debug("Invalid propagation envelope provided."),

@@ -138,3 +138,7 @@ class UserTests(unittest.TestCase):
 
         # Check status code.
         self.verify_status_code(httplib.GONE)
+
+    def test_05_invalid_userid(self):
+        """Request a userid with invalid syntax.  Receive 400."""
+        self.request('HEAD', '/user/platformer_blah_blah')

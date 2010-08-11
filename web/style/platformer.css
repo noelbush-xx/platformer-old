@@ -1,57 +1,61 @@
+body {
+    font-family: sans-serif;
+}
 #userids {
-  width: 29em;
+    min-width: 32em;
 }
 #userid-buttons {
-  margin-top: 1em;
+    margin-top: 1em;
 }
 button:first-child {
-  margin-left: 0;
+    margin-left: 0;
 }
 #users-and-nodes * label {
-  font-weight: bold;
+    font-weight: bold;
 }
 #users-and-nodes {
-  margin: 1em 0 0 0;
+    margin: 1em 0 0 0;
 }
 #users-and-nodes td {
-  padding: 0 2em 0 0;
-  vertical-align: top;
+    padding: 0 2em 0 0;
+    vertical-align: top;
 }
 #users-and-nodes td:last-child {
-  padding-right: 0;
+    padding-right: 0;
 }
 #known-nodes {
-  width: 10em;
+    width: 10em;
 }
 #known-nodes ul {
-  list-style-type: none;
-  padding-left: 0;
-  margin: 0;
-  height: 8em;
-  width: 12em;
-  overflow-y: scroll;
+    list-style-type: none;
+    padding-left: 0;
+    margin: 0;
+    height: 8em;
+    width: 12em;
+    overflow-y: scroll;
+    border: solid gray thin;
 }
 #known-nodes li {
-  font-family: monospace;
+    font-family: monospace;
 }
 .error, #nodes li.unavailable {
-  color: red;
+    color: red;
 }
 .info, #nodes li.available {
-  color: green;
+    color: green;
 }
 #messages {
-  height: 2em;
+    height: 2em;
 }
 #log {
-  margin-top: .4em;
-  height: 16em;
-  overflow-y: scroll;
-  border: solid 1px gray;
+    margin-top: .4em;
+    height: 16em;
+    overflow-y: scroll;
+    border: solid 1px gray;
 }
 #log p {
-  font-family: monospace;
-  padding: 0;
-  margin: 0;
-  font-size: smaller;
+    font-family: monospace;
+    padding: 0;
+    margin: 0;
+    font-size: smaller;
 }

@@ -13,6 +13,7 @@ md5(S) ->
      ).
 
 uuid() ->
+    random:seed(now()),
     uuid:to_string(uuid:v4()).
 
 %% @doc Verify that the given string is a valid v4 UUID.

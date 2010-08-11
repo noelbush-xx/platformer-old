@@ -42,20 +42,22 @@ behaviour_info(_Other) -> undefined.
 create(Type, #envelope{} = Envelope) ->
     log4erl:debug("Creating new ~s.", [Type]),
     Id = lists:concat(["platformer_", Type, "_", platformer_util:uuid()]),
-    apply(memo_module(Type), create, [Id, Envelope]).
+    apply(memo_module(Type), create, [list_to_binary(Id), Envelope]).
 
 %% @doc Create a local record of a memo that already exists somewhere else.
 %%
-%% @spec create(string(), string(), record(), envelope()) -> {Id::string(), Path::string()}
-create(Type, Id, Record, #envelope{priority=Priority} = Envelope) ->
+%% @spec create(string(), binary() | string(), record(), envelope()) -> {Id::string(), Path::string()}
+create(Type, Id, Record, #envelope{} = Envelope) when is_list(Id) ->
+    create(Type, list_to_binary(Id), Record, Envelope);
+create(Type, Id, Record, #envelope{priority=Priority} = Envelope) when is_binary(Id) ->
     case platformer_db:write(Record) of
         {atomic, ok} ->
-            log4erl:debug("Created new ~s ~s with priority ~B.", [Type, Id, Priority]),
+            log4erl:debug("Created new ~s ~p with priority ~B.", [Type, Id, Priority]),
             Json = apply(memo_module(Type), to_json, [Id]),
             spawn_link(platformer_memo, propagate, [put, Type, Id, Json, Envelope]),
-            {Id, lists:concat(["/", Type, "/", Id])};
+            {Id, lists:concat(["/", Type, "/", binary_to_list(Id)])};
         {aborted, Error} ->
-            log4erl:debug("Error in creating ~s ~s: ~p", [Type, Id, Error]),
+            log4erl:debug("Error in creating ~s ~p: ~p", [Type, Id, Error]),
             throw(Error)
     end.
 
@@ -64,12 +66,14 @@ create(Type, Id, Record, #envelope{priority=Priority} = Envelope) ->
 %% deletion.  The return value reflects the success of the local
 %% deletion, not the propagation.
 %%
-%% @spec delete(string(), string(), envelope()) -> ok | {error, Reason}
-delete(Type, Id, #envelope{} = Envelope) ->
+%% @spec delete(string(), binary() | string(), envelope()) -> ok | {error, Reason}
+delete(Type, Id, #envelope{} = Envelope) when is_list(Id) ->
+    delete(Type, list_to_binary(Id), Envelope);
+delete(Type, Id, #envelope{} = Envelope) when is_binary(Id) ->
     log4erl:debug("Delete ~s ~p.", [Type, Id]),
-    case apply(memo_module(Type), get, [list_to_binary(Id)]) of
+    case apply(memo_module(Type), get, [Id]) of
         not_found ->
-            log4erl:debug("~s ~s not found locally; could not delete.", [Type, Id]),
+            log4erl:debug("~s ~p not found locally; could not delete.", [Type, Id]),
             {error, not_found};
         Record ->
             RecordSource = platformer_memo:'#get-'(source, Record),
@@ -80,10 +84,10 @@ delete(Type, Id, #envelope{} = Envelope) ->
             LocalResult = 
                 case mnesia:transaction(F) of
                     {atomic, ok} ->
-                        log4erl:debug("Deleted ~s ~s locally.", [Type, Id]),
+                        log4erl:debug("Deleted ~s ~p locally.", [Type, Id]),
                         ok;
                     {aborted, Error} ->
-                        log4erl:debug("Could not delete ~s ~s locally. Error: ~p", [Type, Id, Error]),
+                        log4erl:debug("Could not delete ~s ~p locally. Error: ~p", [Type, Id, Error]),
                         {error, Error}
                 end,
             log4erl:debug("Propagating deletion memo."),
@@ -100,8 +104,10 @@ delete(Type, Id, #envelope{} = Envelope) ->
 
 %% @doc Get a memo by id.
 %%
-%% @spec get(string(), string()) -> platformer_memo()
-get(Type, Id) ->
+%% @spec get(string(), binary() | string()) -> platformer_memo()
+get(Type, Id) when is_list(Id) ->
+    get(Type, list_to_binary(Id));
+get(Type, Id) when is_binary(Id) ->
     RecordType = memo_module(Type),
     Result = platformer_db:find(qlc:q([X || X <- mnesia:table(RecordType),
                                             platformer_memo:'#get-'(id, X) == Id])),
@@ -119,41 +125,65 @@ get(Type, Id) ->
 %% @doc Check whether there is a local record for a memo with the given id.
 %%  No attempt is made to check remove servers (For that, use {@link exists/2}.)
 %%
-%% @spec exists(string(), string()) -> {bool(), active | deleted}
-exists(Type, Id) ->
-    log4erl:debug("Checking for local record of ~s ~s", [Type, Id]),
+%% @spec exists(string(), binary() | string()) -> {bool(), active | deleted}
+exists(Type, Id) when is_list(Id) ->
+    exists(Type, list_to_binary(Id));
+exists(Type, Id) when is_binary(Id) ->
+    log4erl:debug("Checking for local record of ~s ~p.", [Type, Id]),
     case apply(memo_module(Type), get, [Id]) of
         not_found -> {false, unknown};
         Record ->
             case platformer_memo:'#get-'(status, Record) of
                 active ->
-                    log4erl:debug("~s ~s is active.", [Type, Id]),
+                    log4erl:debug("~s ~p is active.", [Type, Id]),
                     {true, active};
                 deleted ->
-                    log4erl:debug("~s ~s was previously deleted.", [Type, Id]),
+                    log4erl:debug("~s ~p was previously deleted.", [Type, Id]),
                     {false, deleted}
             end
     end.
 
 %% Check whether the indicated memo exists on this or any known node.
 %%
-%% @spec exists(string(), string(), envelope()) -> {bool(), active | deleted}
-exists(Type, Id, Envelope) ->
+%% @spec exists(string(), binary() | string(), envelope()) -> {bool(), active | deleted}
+exists(Type, Id, #envelope{} = Envelope) when is_list(Id) ->
+    exists(Type, list_to_binary(Id), Envelope);
+exists(Type, Id, #envelope{} = Envelope) when is_binary(Id) ->
     Module = memo_module(Type),
     %% First check the local database.
+    log4erl:debug("Checking local database for ~s ~p.", [Type, Id]),
     case apply(Module, exists, [Id]) of
         {true, Status} -> {true, Status};
         {false, deleted} -> {false, deleted};
         {false, unknown} ->
-            exists(Type, Id, platformer_node:get_list(), Envelope)
+            %% Now check other known nodes.
+            KnownNodes = platformer_node:get_list(),
+            log4erl:debug("Checking other known nodes for ~s ~p.", [Type, Id]),
+            case exists(Type, Id, KnownNodes, Envelope) of
+                {true, Status} -> {true, Status};
+                {false, deleted} -> {false, deleted};
+                {false, unknown} ->
+                    %% Ask other nodes for their node lists and check
+                    %% with those (but only if we are the originator)
+                    case platformer_node:is_me(Envelope#envelope.source) of
+                        false ->
+                            log4erl:debug("Request not local; no more checking for ~s ~p.", [Type, Id]),
+                            {false, unknown};
+                        true -> 
+                            log4erl:debug("Checking new nodes for ~s ~p.", [Type, Id]),
+                            NewNodes = platformer_node:get_other_lists(),
+                            % TODO: Look at using ordsets here instead of lists.
+                            exists(Type, Id, lists:subtract(NewNodes, KnownNodes), Envelope)
+                    end
+            end
     end.
 
-%% @spec exists(binary(), [platformer_node()], envelope()) -> {bool(), active | deleted}
+%% @spec exists(string(), binary(), [platformer_node()], envelope()) -> {bool(), active | deleted}
 exists(Type, Id, Nodes, #envelope{} = Envelope) when is_binary(Id) ->
     log4erl:debug("Checking up to ~B other nodes for existence of ~s ~s", [length(Nodes), Type, Id]),
-    exists(Type, binary_to_list(Id), Nodes, Envelope);
+    exists(Type, Id, Nodes, Envelope);
 
-exists(Type, Id, [#platformer_node{} = Node|Nodes], #envelope{token=Token, priority=Priority} = Envelope) ->
+exists(Type, Id, [#platformer_node{} = Node|Nodes], #envelope{token=Token, priority=Priority} = Envelope) when is_binary(Id) ->
     case platformer_node:is_me(Node) of
         false ->
             Address = platformer_node:get_address(Node),
@@ -168,7 +198,7 @@ exists(Type, Id, [#platformer_node{} = Node|Nodes], #envelope{token=Token, prior
                         200 ->
                             log4erl:debug("~s ~s found at node ~s.", [Type, Id, Address]),
                             % Add this memo to local db (without propagating)
-                            apply(memo_module(Type), create, [Type, Id, Envelope#envelope{priority=0, source=Address}]),
+                            apply(memo_module(Type), create, [Id, Envelope#envelope{priority=0, source=Address}]),
                             {true, active};
                         410 ->
                             log4erl:debug("~s ~s was deleted according to node ~s.", [Type, Id, Address]),
@@ -190,7 +220,7 @@ exists(Type, Id, [#platformer_node{} = Node|Nodes], #envelope{token=Token, prior
             exists(Type, Id, Nodes, Envelope)
     end;
 
-exists(_Type, _Id, [], _) ->
+exists(_Type, _Id, [], _Envelope) ->
     log4erl:debug("No more nodes to check."),
     {false, unknown}.
 
@@ -270,10 +300,10 @@ propagate(Action, Type, Id, Body, #envelope{priority=Priority} = Envelope, Manda
     NodeCount = length(Nodes),
     if
         NodeCount > 0 ->
-            log4erl:debug("Propagating priority ~B ~p of ~s ~s to ~B node(s).", [Priority - 1, Action, Type, Id, NodeCount]),
+            %%log4erl:debug("Propagating priority ~B ~p of ~s ~s to ~B node(s).", [Priority - 1, Action, Type, Id, NodeCount]),
             propagate_to_nodes(Nodes, Action, Type, Id, Body, Envelope#envelope{priority=integer_to_list(Priority - 1)});
         NodeCount =:= 0 ->
-            log4erl:debug("No nodes to which to propagate priority ~B ~p of ~s ~s.", [Priority - 1, Action, Type, Id]),
+            %%log4erl:debug("No nodes to which to propagate priority ~B ~p of ~s ~s.", [Priority - 1, Action, Type, Id]),
             ok
     end.
 
@@ -303,6 +333,6 @@ propagate_to_nodes([Node|Rest], Action, Type, Id, Body, #envelope{token=Token, p
             end
     end,
     propagate_to_nodes(Rest, Action, Type, Id, Body, Envelope);
-propagate_to_nodes([], Action, Type, Id, _, _) ->
-    log4erl:debug("No more nodes to which to propagate ~p of ~s ~s.", [Action, Type, Id]),
+propagate_to_nodes([], _Action, _Type, _Id, _, _) ->
+    %%log4erl:debug("No more nodes to which to propagate ~p of ~s ~s.", [Action, Type, Id]),
     ok.
