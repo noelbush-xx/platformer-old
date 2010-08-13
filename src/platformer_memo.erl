@@ -54,7 +54,7 @@ create(Type, Id, Record, #envelope{priority=Priority} = Envelope) when is_binary
         {atomic, ok} ->
             log4erl:debug("Created new ~s ~p with priority ~B.", [Type, Id, Priority]),
             Json = apply(memo_module(Type), to_json, [Id]),
-            spawn_link(platformer_memo, propagate, [put, Type, Id, Json, Envelope]),
+            spawn_link(platformer_memo, propagate, [put, Type, binary_to_list(Id), Json, Envelope]),
             {Id, lists:concat(["/", Type, "/", binary_to_list(Id)])};
         {aborted, Error} ->
             log4erl:debug("Error in creating ~s ~p: ~p", [Type, Id, Error]),
@@ -93,7 +93,7 @@ delete(Type, Id, #envelope{} = Envelope) when is_binary(Id) ->
             log4erl:debug("Propagating deletion memo."),
             
             SourceNode = platformer_node:get(platformer_node:get_id((RecordSource))),
-            spawn(platformer_memo, propagate, [delete, Type, Id, Envelope,
+            spawn(platformer_memo, propagate, [delete, Type, binary_to_list(Id), Envelope,
                                                     case platformer_node:is_me(SourceNode) of
                                                         true -> [];
                                                         false -> [SourceNode]
@@ -181,14 +181,14 @@ exists(Type, Id, #envelope{} = Envelope) when is_binary(Id) ->
 %% @spec exists(string(), binary(), [platformer_node()], envelope()) -> {bool(), active | deleted}
 exists(Type, Id, Nodes, #envelope{} = Envelope) when is_binary(Id) ->
     log4erl:debug("Checking up to ~B other nodes for existence of ~s ~s", [length(Nodes), Type, Id]),
-    exists(Type, Id, Nodes, Envelope);
+    exists_remote(Type, Id, Nodes, Envelope).
 
-exists(Type, Id, [#platformer_node{} = Node|Nodes], #envelope{token=Token, priority=Priority} = Envelope) when is_binary(Id) ->
+exists_remote(Type, Id, [#platformer_node{} = Node|Nodes], #envelope{token=Token, priority=Priority} = Envelope) when is_binary(Id) ->
     case platformer_node:is_me(Node) of
         false ->
             Address = platformer_node:get_address(Node),
-            log4erl:debug("Checking node at ~s for ~s ~s.", [Address, Type, Id]),
-            case httpc:request(head, {lists:concat([Address, "/", Type, "/", Id]),
+            log4erl:debug("Checking node at ~s for ~s ~p.", [Address, Type, Id]),
+            case httpc:request(head, {lists:flatten(io_lib:format("~s/~s/~s", [Address, Type, Id])),
                                       [{"X-Platformer-Memo-Token", Token},
                                        {"X-Platformer-Memo-Priority", integer_to_list(Priority)},
                                        {"X-Platformer-Memo-Source", platformer_node:my_address()}]},
@@ -196,31 +196,33 @@ exists(Type, Id, [#platformer_node{} = Node|Nodes], #envelope{token=Token, prior
                 {ok, {{_, Status, _}, _, _}} ->
                     case Status of
                         200 ->
-                            log4erl:debug("~s ~s found at node ~s.", [Type, Id, Address]),
+                            log4erl:debug("~s ~p found at node ~s.", [Type, Id, Address]),
                             % Add this memo to local db (without propagating)
                             apply(memo_module(Type), create, [Id, Envelope#envelope{priority=0, source=Address}]),
                             {true, active};
                         410 ->
-                            log4erl:debug("~s ~s was deleted according to node ~s.", [Type, Id, Address]),
+                            log4erl:debug("~s ~p was deleted according to node ~s.", [Type, Id, Address]),
                             %% TODO: Add a deleted record to our db (?)
                             {false, deleted};
                         _ ->
-                            log4erl:debug("Node ~s returns status ~B for ~s ~s; checking other nodes.", [Address, Status, Type, Id]),
-                            exists(Type, Id, Nodes, Envelope)
+                            log4erl:debug("Node ~s returns status ~B for ~s ~p; checking other nodes.",
+                                          [Address, Status, Type, Id]),
+                            exists_remote(Type, Id, Nodes, Envelope)
                     end;
                 {error, timeout} ->
-                    log4erl:debug("Request timed out when checking node ~s for  ~s.", [Address, Type, Id]),
-                    exists(Type, Id, Nodes, Envelope);
+                    log4erl:debug("Request timed out when checking node ~s for ~s ~p.", [Address, Type, Id]),
+                    exists_remote(Type, Id, Nodes, Envelope);
                 Result ->
-                    log4erl:debug("An unexpected result was obtained when checking node ~s for ~s ~s: ~p", [Address, Type, Id, Result]),
-                    exists(Type, Id, Nodes, Envelope)
+                    log4erl:debug("An unexpected result was obtained when checking node ~s for ~s ~p: ~p",
+                                   [Address, Type, Id, Result]),
+                    exists_remote(Type, Id, Nodes, Envelope)
             end;
         true ->
             log4erl:debug("Skipping check of self."),
-            exists(Type, Id, Nodes, Envelope)
+            exists_remote(Type, Id, Nodes, Envelope)
     end;
 
-exists(_Type, _Id, [], _Envelope) ->
+exists_remote(_Type, _Id, [], _Envelope) ->
     log4erl:debug("No more nodes to check."),
     {false, unknown}.
 

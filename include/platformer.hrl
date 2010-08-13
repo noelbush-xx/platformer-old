@@ -1,8 +1,8 @@
 %% A user of Platformer.
--record(platformer_user, {id :: string(),              % a unique id (v4 uuid)
+-record(platformer_user, {id,                          % a unique id (v4 uuid)
                           status :: active | deleted,  % active | deleted
                           last_modified :: integer(),  % when last modified by node retaining this record
-                          source :: string()           % url of node who told us about this user
+                          source                       % url of node who told us about this user
                          }).
 
 %% A Platformer node.

@@ -91,14 +91,10 @@ malformed_request(ReqData, Context) ->
                 %% Check that the body contains a json object with the node spec
                 Body = wrq:req_body(ReqData),
                 {MF1, NRD1, NC1} =
-                    try ?json_to_record(nodespec, binary_to_list(Body)) of
-                        %% Since we have to construct the record to determine its validity, we'll hang onto it
-                        %% (We fix the scheme as an atom while we're at it.)
-                        #nodespec{scheme=Scheme, host=Host, port=Port} ->
-                            Record = #platformer_node{scheme = binary_to_atom(Scheme, latin1), host = Host, port = Port},
-                            {false, ReqData,
-                             Context#context{record=Record}}
-                    catch error ->
+                    case platformer_node:from_json(Body) of
+                        {ok, Record} ->
+                            {false, ReqData, Context#context{record=Record}};
+                        error ->
                             {true, wrq:append_to_response_body("Invalid or missing node specification."), Context}
                     end,
                 %% Be sure the path is right.

@@ -127,9 +127,10 @@ init([]) ->
     %% Announce self to other servers, seek peers, and set up timed announcements and peer searches.
     platformer_node:announce_self(),
     platformer_node:seek_peers(),
-    crone:start([{{daily,{every,{5,min},{between,{12,am},{11,55,pm}}}},
+    AnnounceInterval = platformer_util:get_param(announce_interval),
+    crone:start([{{daily,{every,{AnnounceInterval,min},{between,{12,am},{11,55,pm}}}},
                   {platformer_node,announce_self,[]}}]),
-    crone:start([{{daily,{every,{5,min},{between,{12,am},{11,55,pm}}}},
+    crone:start([{{daily,{every,{AnnounceInterval,min},{between,{12,am},{11,55,pm}}}},
                   {platformer_node,seek_peers,[]}}]),
     
                      

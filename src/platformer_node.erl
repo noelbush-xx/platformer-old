@@ -9,8 +9,8 @@
 -behaviour(platformer_memo).
 
  %% Exports required by platformer_memo.
-%%-export([create/1, create/2, delete/2, exists/1, exists/2, get/1, is_valid_id/1, to_json/1]).
--export([create/1, create/2, get/1]).
+%%-export([create/1, create/2, delete/2, exists/1, exists/2, from_json/1, get/1, is_valid_id/1, to_json/1]).
+-export([create/1, create/2, from_json/1, get/1]).
 
 %% Other exports specific to nodes.
 -export([adjust_rating/2, create_from_list/1, me/0,
@@ -103,6 +103,16 @@ create(Address, Rating) when is_list(Address) ->
 get(Id) ->
     platformer_memo:get("node", Id).
 
+from_json(Json) ->
+    log4erl:debug("Convert from json: ~s", [Json]),
+    try ?json_to_record(platformer_node, Json) of
+        #platformer_node{scheme=Scheme, status=Status} = Record ->
+            Record#platformer_node{scheme = binary_to_atom(Scheme, latin1), status = binary_to_atom(Status, latin1)}
+    catch _:Error ->
+            log4erl:debug("Error converting record from json: ~p", [Error]),
+            error
+    end.
+
 %% @doc Constructs the address of the given node record.
 %%
 %% @spec get_address(#platformer_node{}) -> string()
@@ -146,7 +156,6 @@ is_me(Host, Port) ->
 
 me() ->
     platformer_node:get(get_id(my_address())).
-
 
 %% @doc Returns a list of all nodes known to this one,
 %% <em>including</em> the present node.
@@ -212,14 +221,28 @@ get_other_lists() ->
 
 get_other_list([Node|Rest], Acc) ->
     Address = get_address(Node),
-    case httpc:request(Address ++ "/node/list") of
-        {error, Reason} ->
-            log4erl:error("Could not get node list from ~s. Error:~n~p", [Address, Reason]);
-        {ok, Result} ->
-            log4erl:debug("Node list from ~s:~n~p", [Address, jsonerl:decode(Result)])
-    end,
-    get_other_list(Rest, [[]|Acc]);
-get_other_list([], Acc) -> Acc.
+    Others =
+        case httpc:request(Address ++ "/node/list") of
+            {ok, {{_, 200, _}, _Headers, Body}} ->
+                log4erl:debug("Body: ~s", [Body]),
+                case re:run(Body, "^\\{\"nodes\":\\[(.+)\\]\\}\$", [{capture, all_but_first, list}]) of
+                    nomatch ->
+                        log4erl:debug("Could not parse node specs from body."),
+                        [];
+                    {match, [Captured]} ->
+                        Specs = re:split(Captured, "(\\}),", [{return, list}]),
+                        log4erl:debug("Specs: ~s", [Specs]),
+                        Records = [platformer_node:from_json(S) || S <- Specs],
+                        log4erl:debug("Records: ~p", [Records]),
+                        lists:filter(fun(R) -> R =/= error end, Records)
+                end;
+            Result ->
+                log4erl:error("Could not get node list from ~s. Result:~n~p", [Address, Result]),
+                []
+        end,
+    log4erl:debug("Got ~B other nodes from node ~s:~n~p", [length(Others), Others]),
+    get_other_list(Rest, [Others|Acc]);
+get_other_list([], Acc) -> lists:flatten(Acc).
 
     
 %% @doc Ensures any preconfigured nodes are in the database.
