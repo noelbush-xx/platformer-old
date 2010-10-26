@@ -8,13 +8,12 @@
 -module(platformer_node).
 -behaviour(platformer_memo).
 
- %% Exports required by platformer_memo.
-%%-export([create/1, create/2, delete/2, exists/1, exists/2, from_json/1, get/1, is_valid_id/1, to_json/1]).
--export([create/1, create/2, from_json/1, get/1]).
+%% Exports required by platformer_memo.
+-export([create/2, delete/2, exists/1, exists/2, get/1, is_valid_id/1, to_json/1]).
 
 %% Other exports specific to nodes.
--export([adjust_rating/2, create_from_list/1, me/0,
-         delete/1, load_preconfigured/0, my_address/0, get_address/1,
+-export([adjust_rating/2, create/1, create_from_list/1, from_json/1, me/0, my_id/0,
+         load_preconfigured/0, my_address/0, get_address/1,
          get_id/1, get_list/0, get_list/1, get_random_list/1, get_random_list/2,
          get_random_list/3, get_other_lists/0, get_path/1, is_me/1, announce_self/0,
          seek_peers/0]).
@@ -23,88 +22,71 @@
 -include_lib("jsonerl.hrl").
 -include_lib("platformer.hrl").
 
-%% @doc Deletes a node identified by an id.  Return value indicates
-%% whether the operation succeeded.
-%%
-%% @spec delete(binary()) -> bool()
-delete(Id) ->
-    F = fun() ->
-                [Node] = mnesia:read(platformer_user, Id, write),
-                mnesia:write(Node#platformer_node{status=deleted, last_modified=platformer_util:now_int()})
-        end,
-    case mnesia:transaction(F) of
-        {atomic, _} ->
-            true;
-        {aborted, _} ->
-            false
-    end.
 
-%% @doc Creates nodes from the given list of node specifications.
-%%
-%% @spec create_from_list([nodespec()]) -> is_me | {ok, node()} | {error, string()}
-create_from_list([Node|Rest]) ->
-    create(Node),
-    create_from_list(Rest);
-create_from_list([]) -> ok.
-
-%% @doc Creates a node from the given information, assuming a starting rating of 100.
-%% @see create/2
-%%
-%% @spec create(term() | tuple() | string()) -> is_me | {ok, node()} | {error, string()}
-create(NodeSpec) ->
-    create(NodeSpec, 100).
-
-%% @doc Creates a node from the given information and the specified
-%%  rating.  A tuple will be parsed as a #platformer_node record, first
-%%  converted if necessary; a string will be parsed as an address
-%%  (e.g., "http://localhost:8000").  The <code>is_me</code> return
-%%  result indicates that the given specification indicates the
-%%  current node and that no new node was created.
-%%
-%% @spec create(term() | tuple() | string(), integer()) -> {is_me | ok | already_exists, node()} | {error, string()}
-create(#platformer_node{} = Record, Rating) ->
-    Address = get_address(Record),
-    Id = get_id(Address),
-    
-    %% First check whether node record already exists in database.
-    {Status, NodeRecord} =
-        case platformer_node:get(Id) of
-            not_found ->
-                %% Augment the supplied record to become a full-fledged node record.
-                Node = Record#platformer_node{status=active,
-                                     id=list_to_binary(Id),
-                                     rating=Rating,
-                                     last_modified=platformer_util:now_int()},
-                %% log4erl:info("Creating new node with address ~p.", [Address]),
-                case platformer_db:write(Node) of
-                    {atomic, ok} ->
-                        {ok, Node};
-                    {aborted, Error} ->
-                        {error, Error}
-                end;
-            Node ->
-                %% log4erl:debug("Node ~p is already known.", [Address]),
-                {already_exists, Node}
-        end,
-    case is_me(Record) of
-        true -> {Status, NodeRecord, is_me};
-        false -> {Status, NodeRecord}
+%% @spec create(string()) -> {Id::string(), Path::string()}
+create(Address) when is_list(Address) ->
+    case http_uri:parse(Address) of
+        {Scheme, _UserInfo, Host, Port, _Path, _Query} ->
+            create(#platformer_node{scheme=Scheme, host=list_to_binary(Host), port=Port});
+        {error, Error} ->
+            log4erl:error("Could not parse address ~s.  Error: ~p", [Address, Error])
     end;
 
-create(Tuple, Rating) when is_tuple(Tuple) ->
-    Proplist = [{binary_to_atom(X, latin1), Y} || {X, Y} <- tuple_to_list(Tuple)],
-    RawRecord = list_to_tuple([platformer_node|[proplists:get_value(X, Proplist) || X <- record_info(fields, platformer_node)]]),
-    Record = RawRecord#platformer_node{scheme=binary_to_atom(RawRecord#platformer_node.scheme, latin1)},
-    create(Record, Rating);
-create(Address, Rating) when is_list(Address) ->
-    {Scheme, _UserInfo, Host, Port, _Path, _Query} = http_uri:parse(Address),
-    create(#platformer_node{scheme=Scheme, host=list_to_binary(Host), port=Port}, Rating).
+%% @spec create(platformer_node()) -> {Id::string(), Path::string()}
+create(#platformer_node{} = Record) ->
+    log4erl:debug("Creating new node from record: ~p", [Record]),
+    create(Record, #envelope{priority=0});
+create(RecordData) when is_tuple(RecordData) ->
+    RawRecord = platformer_util:record_from_proptuple(platformer_node, RecordData),
+    create(RawRecord#platformer_node{scheme=binary_to_atom(RawRecord#platformer_node.scheme, latin1)}).
 
+%% @spec create(platformer_node(), envelope()) -> {Id::string(), Path::string()}
+create(#platformer_node{} = Record, #envelope{} = Envelope) ->
+    Id = get_id(Record),
+    Node = Record#platformer_node{status=active,
+                                  id=Id,
+                                  rating=case Record#platformer_node.rating of undefined -> 100; Rating -> Rating end,
+                                  last_modified=platformer_util:now_int()},
+    %% The envelope is basically meaningless; be sure priority is 0 so we don't try to propagate.
+    log4erl:debug("Created new node record: ~p", [Node]),
+    platformer_memo:create("node", Id, Node, Envelope#envelope{priority=0}).
+
+delete(Id, #envelope{} = Envelope) ->
+    platformer_memo:delete("node", Id, Envelope#envelope{priority=0}).
+
+%% @doc Check whether there is a local record for a node with the given id.
+%%
+%% @spec exists(binary()) -> {bool(), active | deleted}
+exists(Id) when is_binary(Id) ->
+    platformer_memo:exists("node", Id).
+
+%% @doc Since node records only matter locally, returns the same as {@link exists/1}.
+%%    
+%% @spec exists(binary(), envelope()) -> {bool(), active | deleted}
+exists(Id, #envelope{} = _Envelope) when is_binary(Id) ->
+    exists(Id).
+
+%% @doc Get a node record by id.
+%%
+%% @spec get(binary()) -> platformer_node()
 get(Id) ->
     platformer_memo:get("node", Id).
 
+
+%% @doc Produce a json representation of the node with the given id.
+%%
+%% @spec to_json(binary()) -> string()
+to_json(Id) when is_binary(Id) ->
+    platformer_memo:to_json(node, Id).
+
+%% @doc Is the given id valid for a node record?
+%%
+%% @spec is_valid_id(binary()) -> bool()
+is_valid_id(Id) when is_binary(Id) ->
+    platformer_memo:is_valid_id("node", Id).
+
 from_json(Json) ->
-    log4erl:debug("Convert from json: ~s", [Json]),
+    %% log4erl:debug("Convert from json: ~s", [Json]),
     try ?json_to_record(platformer_node, Json) of
         #platformer_node{scheme=Scheme, status=Status} = Record ->
             Record#platformer_node{scheme = binary_to_atom(Scheme, latin1), status = binary_to_atom(Status, latin1)}
@@ -126,7 +108,7 @@ get_address(#platformer_node{scheme=Scheme, host=Host, port=Port}) ->
 get_id(#platformer_node{} = Record) ->
     get_id(get_address(Record));
 get_id(Address) ->
-    string:concat("platformer_node_", platformer_util:md5(Address)).
+    list_to_binary(string:concat("platformer_node_", platformer_util:md5(Address))).
 
 %% @doc Returns the path that should be used (appended to hostname for URI)
 %% for referring to this node.
@@ -155,7 +137,18 @@ is_me(Host, Port) ->
     end.    
 
 me() ->
-    platformer_node:get(get_id(my_address())).
+    platformer_node:get(my_id()).
+
+my_id() ->
+    get_id(my_address()).
+
+%% @doc Creates nodes from the given list of node specifications.
+%%
+%% @spec create_from_list([nodespec()]) -> is_me | {ok, node()} | {error, string()}
+create_from_list([Node|Rest]) ->
+    create(Node),
+    create_from_list(Rest);
+create_from_list([]) -> ok.
 
 %% @doc Returns a list of all nodes known to this one,
 %% <em>including</em> the present node.
@@ -167,7 +160,9 @@ get_list(include_self) ->
 %% @doc Returns a list of all nodes known to this one, <em>except</em>
 %% the present node itself.
 get_list() ->
-    platformer_db:find(qlc:q([X || X <- mnesia:table(platformer_node), X#platformer_node.id =/= list_to_binary(get_id(my_address()))])).
+    MyId = my_id(),
+    platformer_db:find(qlc:q([X || X <- mnesia:table(platformer_node),
+                                   X#platformer_node.id =/= MyId])).
 
 %% @doc Gets a random list of nodes known to this node.  The
 %% <code>SampleSize</code> may be specified as <code>{percentage,
@@ -175,7 +170,6 @@ get_list() ->
 %%
 %% @spec get_random_list(tuple()) -> [NodeRecord]
 get_random_list(SampleSize) -> get_random_list(SampleSize, [], []).
-
 
 get_random_list(SampleSize, Criteria) -> get_random_list(SampleSize, Criteria, []).
 
@@ -232,7 +226,7 @@ get_other_list([Node|Rest], Acc) ->
                     {match, [Captured]} ->
                         Specs = re:split(Captured, "(\\}),", [{return, list}]),
                         log4erl:debug("Specs: ~s", [Specs]),
-                        Records = [platformer_node:from_json(S) || S <- Specs],
+                        Records = [from_json(S) || S <- Specs],
                         log4erl:debug("Records: ~p", [Records]),
                         lists:filter(fun(R) -> R =/= error end, Records)
                 end;
@@ -284,23 +278,19 @@ adjust_rating(Node, Adjustment) ->
 
 %% @doc Announce this node to other known nodes.
 announce_self() ->
-    Json = list_to_binary(
-             ?record_to_json(nodespec,
-                             #nodespec{scheme=platformer_util:get_param(scheme),
-                                       host=list_to_binary(platformer_util:get_param(ip)),
-                                       port=platformer_util:get_param(port)})),
-    Nodes = platformer_node:get_list(),
-    %% log4erl:debug("Announcing myself to ~B peer node(s).", [length(Nodes)]),
+    Json = list_to_binary(?record_to_json(platformer_node, me())),
+    Nodes = get_list(),
+    log4erl:debug("Announcing myself to ~B peer node(s) with this json:~n~s", [length(Nodes), Json]),
     announce_self(Json, Nodes).
 
 announce_self(Json, [Node|Rest])->
-    Address = platformer_node:get_address(Node),
-    %% log4erl:debug("Announcing myself to node ~p.", [Address]),
+    Address = get_address(Node),
+    log4erl:debug("Announcing myself to node ~p.", [Address]),
     httpc:request(post, {Address ++ "/node", [], "text/javascript", Json}, [], []),
     announce_self(Json, Rest);
 
 announce_self(_Json, [])->
-    %% log4erl:debug("No more nodes to whom to announce myself."),
+    log4erl:debug("No more nodes to whom to announce myself."),
     ok.
 
 %% @doc Ask other nodes for their node lists.  We check with
@@ -308,22 +298,22 @@ announce_self(_Json, [])->
 seek_peers() ->
     Nodes = lists:sort(fun(A, B) ->
                                A#platformer_node.last_modified < B#platformer_node.last_modified end,
-                       platformer_node:get_list()),
+                       get_list()),
     Sublist = lists:sublist(Nodes, trunc(length(Nodes) * 0.25 + 1)),
     seek_peers(Sublist).
 
 seek_peers([Node|Rest]) ->
-    Address = platformer_node:get_address(Node),
-    %% log4erl:debug("Asking node ~p for its node list.", [Address]),
+    Address = get_address(Node),
+    log4erl:debug("Asking node ~p for its node list.", [Address]),
     case httpc:request(Address ++ "/node/list") of
         {ok, {{_, 200, _}, _, Body}} ->
             %% log4erl:debug("Retrieved node list from ~p; increasing rating.", [Address]),
-            platformer_node:adjust_rating(Node, 1),
+            adjust_rating(Node, 1),
             {{<<"nodes">>, Peers}} = jsonerl:decode(Body),
-            platformer_node:create_from_list(Peers);
+            create_from_list(Peers);
         _ ->
             %% log4erl:debug("Could not retrieve node list from ~p; reducing rating.", [Address]),
-            platformer_node:adjust_rating(Node, -1)
+            adjust_rating(Node, -1)
     end,
     seek_peers(Rest);
 seek_peers([]) ->

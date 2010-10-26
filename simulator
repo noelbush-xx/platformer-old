@@ -39,6 +39,7 @@ validate(Options) ->
     HighPort = proplists:get_value(high_port, Options),
     MinWait = proplists:get_value(min_wait, Options),
     MaxWait = proplists:get_value(max_wait, Options),
+    Quiet = proplists:is_defined(quiet, Options),
 
     SeedString = proplists:get_value(stable_seeds, Options),
     StableSeeds = try [list_to_integer(X) || X <- string:tokens(SeedString, ", ")]
@@ -50,34 +51,40 @@ validate(Options) ->
         MaxWait < MinWait -> {error, "less than min_wait", max_wait, MaxWait};
         StableSeeds =:= error -> {error, "not a valid integer list", stable_seeds, SeedString}; %TODO: check that ports are within range
         true ->
-            {ok, {Chaos / 100, MinNodes, MaxNodes, LowPort, HighPort, MinWait, MaxWait, StableSeeds}}
+            {ok, {Chaos / 100, MinNodes, MaxNodes, LowPort, HighPort, MinWait, MaxWait, StableSeeds, Quiet}}
     end.
     
-start({Chaos, MinNodes, MaxNodes, LowPort, HighPort, MinWait, MaxWait, StableSeeds} = OptValues) ->
-    io:format("=====================================~n"),
-    io:format("Starting Platformer network simulator~n"),
-    io:format("  Settings:~n"),
-    io:format("  * node availability: ~B-~B nodes~n", [MinNodes, MaxNodes]),
-    io:format("  * port range: ~B-~B~n", [LowPort, HighPort]),
-    io:format("  * event intervals: ~B-~B seconds~n", [MinWait, MaxWait]),
-    io:format("  * stable seeds: ~p~n", [StableSeeds]),
-    io:format("  * chaos: ~B%~n~n", [round(Chaos * 100)]),
+start({Chaos, MinNodes, MaxNodes, LowPort, HighPort, MinWait, MaxWait, StableSeeds, Quiet} = OptValues) ->
+    if not Quiet ->
+            io:format("=====================================~n"),
+            io:format("Starting Platformer network simulator~n"),
+            io:format("  Settings:~n"),
+            io:format("  * node availability: ~B-~B nodes~n", [MinNodes, MaxNodes]),
+            io:format("  * port range: ~B-~B~n", [LowPort, HighPort]),
+            io:format("  * event intervals: ~B-~B seconds~n", [MinWait, MaxWait]),
+            io:format("  * stable seeds: ~p~n", [StableSeeds]),
+            io:format("  * chaos: ~B%~n~n", [round(Chaos * 100)]),
+            io:format("[start stop wait]  ~s  {   lag}~n", [string:copies(" ", HighPort - LowPort + 1)]);
+       Quiet -> noop end,
     random:seed(now()),
-    io:format("[start stop wait]  ~s  {   lag}~n", [string:copies(" ", HighPort - LowPort + 1)]),
     loop(OptValues).
 
 loop(OptValues) -> loop(OptValues, []). 
 
 %% First run of the loop: start up the stable seeds.
-loop({_, _, _, LowPort, HighPort, _, _, StableSeeds} = OptValues, []) ->
-    io:format("[ ~4B ~4B ~4B] [~s]", [length(StableSeeds), 0, 0, status_string(lists:seq(LowPort, HighPort), StableSeeds, [], [], [])]),
+loop({_, _, _, LowPort, HighPort, _, _, StableSeeds, Quiet} = OptValues, []) ->
+    if not Quiet ->
+            io:format("[ ~4B ~4B ~4B] [~s]", [length(StableSeeds), 0, 0, status_string(lists:seq(LowPort, HighPort), StableSeeds, [], [], [])]);
+       Quiet -> noop end,
     statistics(wall_clock),
     start_nodes(StableSeeds),
     {_, Lag} = statistics(wall_clock),
-    io:format(" {~6.2f}~n", [Lag / 1000]),
+    if not Quiet ->
+            io:format(" {~6.2f}~n", [Lag / 1000]);
+       Quiet -> noop end,
     loop(OptValues, StableSeeds);
 
-loop({Chaos, MinNodes, MaxNodes, LowPort, HighPort, MinWait, MaxWait, StableSeeds} = OptValues, Running) ->
+loop({Chaos, MinNodes, MaxNodes, LowPort, HighPort, MinWait, MaxWait, StableSeeds, Quiet} = OptValues, Running) ->
     RunningCount = length(Running),
     StartCount = lists:max([choice(MinNodes, MaxNodes, Chaos) - RunningCount, 0]),
     StopCount = lists:max([RunningCount - choice(MinNodes, MaxNodes, Chaos), 0]),
@@ -88,13 +95,18 @@ loop({Chaos, MinNodes, MaxNodes, LowPort, HighPort, MinWait, MaxWait, StableSeed
     ToStart = choose(StartCount, lists:subtract(UsablePorts, Running)),
     ToStop = choose(StopCount, lists:subtract(Running, StableSeeds)),
 
-    StatusString = status_string(AllPorts, ToStart, ToStop, Running, StableSeeds),
-    io:format("[ ~4B ~4B ~4B] [~s]", [StartCount, StopCount, Wait, StatusString]),
+    if not Quiet ->
+            StatusString = status_string(AllPorts, ToStart, ToStop, Running, StableSeeds),
+            io:format("[ ~4B ~4B ~4B] [~s]", [StartCount, StopCount, Wait, StatusString]);
+       Quiet -> noop end,
     statistics(wall_clock),
     start_nodes(ToStart),
     stop_nodes(ToStop),
     {_, Lag} = statistics(wall_clock),
-    io:format(" {~6.2f}~n", [Lag / 1000]),
+    
+    if not Quiet ->
+            io:format(" {~6.2f}~n", [Lag / 1000]);
+       Quiet -> noop end,
     timer:sleep(lists:max([Wait * 1000 - Lag, 1])),
     NewRunning = lists:subtract(lists:concat([ToStart, Running]), ToStop),
     loop(OptValues, NewRunning).
@@ -105,15 +117,21 @@ start_nodes(Ports) ->
 
 start_nodes([Port|Rest], Host) ->
     NodeName = lists:concat(["platformer_", Port]),
-    slave:start(Host, NodeName, lists:concat(["-pa deps/getopt/ebin ebin deps/webmachine/ebin deps/webmachine/deps/mochiweb/ebin deps/log4erl/ebin",
-                                              " -boot start_sasl",
-                                              " -s reloader -s platformer",
-                                              " -mnesia dir '\"priv/db/Mnesia.", NodeName, "\"'",
-                                              " -config priv/platformer_node",
-                                              " -config priv/log-errors",
-                                              " -platformer port ", Port,
-                                              " -detached",
-                                              " -setcookie simulator -- reset-db"])),
+    case slave:start_link(Host, NodeName,
+                          lists:concat(["-pa ebin include deps/*/ebin",
+                                        " -boot start_sasl",
+                                        " -s reloader -s platformer",
+                                        " -mnesia dir '\"priv/db/Mnesia.", NodeName, "\"'",
+                                        " -config priv/platformer_node",
+                                        " -config priv/log-errors",
+                                        " -platformer port ", Port,
+                                        " -detached",
+                                        " -setcookie simulator -- reset-db"])) of
+        {ok, _Node} ->
+            noop;
+        {error, Reason} ->
+            io:format("Could not start node.  Error: ~p", [Reason])
+    end,
     start_nodes(Rest, Host);
 
 start_nodes([], _) -> ok.
@@ -184,6 +202,7 @@ option_spec_list() ->
      {min_wait,     $i, "min-wait",  {integer, 1},     "Minimum seconds to wait between changes [1]"},
      {max_wait,     $a, "max-wait",  {integer, 60},    "Maximum seconds to wait between changes [60]"},
      {chaos,        $C, "chaos",     {integer, 50},    "Degree of chaos (from 0 to 100) [50]"},
+     {quiet,        $q, "quiet",     undefined,        "Suppress output (except for errors)"},
      {help,         $h, "help",      undefined,        "Print this help"}
     ].
         

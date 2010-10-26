@@ -31,8 +31,8 @@ new_propagation_envelope() ->
 %% @spec valid_propagation_envelope(wm_reqdata(), bool(), bool()) -> {bool(), {string(), integer(), string()}, wm_reqdata()} | {bool(), wm_reqdata()}
 valid_propagation_envelope(ReqData, Explain, AllowNone) ->
     {Valid, Invalid, NRD1, Values} =
-        verify_headers([{"X-Platformer-Memo-Token", fun(S) -> platformer_memo:is_valid_token(S, "X-Platformer-Memo-Token") end},
-                        {"X-Platformer-Memo-Priority", fun(S) -> platformer_memo:is_valid_priority(S, "X-Platformer-Memo-Priority") end}
+        verify_headers([{?TOKEN_HEADER, fun(S) -> platformer_memo:is_valid_token(S, ?TOKEN_HEADER) end},
+                        {?PRIORITY_HEADER, fun(S) -> platformer_memo:is_valid_priority(S, ?PRIORITY_HEADER) end}
                        ], ReqData, Explain),
     if
         Valid == 0 andalso Invalid == 0 ->
@@ -41,9 +41,9 @@ valid_propagation_envelope(ReqData, Explain, AllowNone) ->
             end;
         Invalid > 0 -> {false, NRD1};
         Valid < 2   -> {false, NRD1};
-        Valid == 2  -> {true, #envelope{token=proplists:get_value("X-Platformer-Memo-Token", Values),
-                                        priority=proplists:get_value("X-Platformer-Memo-Priority", Values),
-                                        source=case wrq:get_req_header("X-Platformer-Memo-Source", ReqData) of
+        Valid == 2  -> {true, #envelope{token=proplists:get_value(?TOKEN_HEADER, Values),
+                                        priority=proplists:get_value(?PRIORITY_HEADER, Values),
+                                        source=case wrq:get_req_header(?SOURCE_HEADER, ReqData) of
                                                    undefined -> "client";
                                                    Source -> Source
                                                end},
@@ -121,7 +121,7 @@ support_preflight(_, [], ReqData) -> ReqData.
 %%
 %% @spec postprocess_rd(wm_reqdata()) -> wm_reqdata()
 postprocess_rd(ReqData) ->
-    case wrq:get_req_header("X-Platformer-Memo-Source", ReqData) of
+    case wrq:get_req_header(?SOURCE_HEADER, ReqData) of
         undefined -> true;
         Address ->
             case platformer_node:get(platformer_util:md5(Address)) of

@@ -1,12 +1,12 @@
 #!/usr/bin/env python
-import unittest
+from unittest import *
 from user_tests import *
 from single_known_stable_node import *
 
-# This runs user tests on a single known, stable node.
 class TestUserSingleKnownStableNode(SingleKnownStableNode, UserTests):
+    """This runs user tests on a single known, stable node."""
     pass
 
 if __name__ == '__main__':
-    suite = unittest.TestLoader().loadTestsFromTestCase(TestUserSingleKnownStableNode)
-    unittest.TextTestRunner(verbosity=2).run(suite)
+    suite = TestLoader().loadTestsFromTestCase(TestUserSingleKnownStableNode)
+    TextTestRunner(verbosity=2).run(suite)

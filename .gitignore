@@ -1,3 +1,4 @@
+.eunit
 .settings
 .hg
 *.pyc
@@ -5,7 +6,9 @@ deps/*/ebin/*
 doc
 erl_crash.dump
 ebin/*
+MnesiaCore*
 priv/db/*
 priv/log/*
 priv/pid/*
 src/TAGS
+test/docs

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import unittest
+from unittest import *
 import httplib, re, uuid
 
 USERID_REGEXP = re.compile(r'platformer_user_'
@@ -11,7 +11,7 @@ USERID_REGEXP = re.compile(r'platformer_user_'
 USER_JSON_REGEXP = re.compile(r'\{"user":' r'\{"id":"' + USERID_REGEXP.pattern + '"\}\}', re.I)
 USER_PATH_REGEXP = re.compile(r'/user/' + USERID_REGEXP.pattern)
 
-class UserTests(unittest.TestCase):
+class UserTests(TestCase):
     """This class contains tests related to creating, verifying and
     deleting users.  It does not include setup or teardown code, so
     subclasses can test different node configurations."""

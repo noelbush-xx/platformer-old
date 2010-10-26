@@ -1,6 +1,6 @@
 %% @author Noel Bush <noel@platformer.org>
 %% @copyright 2010 Noel Bush.
-%% @doc User resource.
+%% @doc Memo resource.
 %%
 %% A memo resource can represent a fact, or simply the assertion of the
 %% existence of something.  It is an "abstract class" whose concrete
@@ -8,49 +8,30 @@
 
 -module(platformer_memo_resource).
 -export([init/1, to_json/2]).
--export([allow_missing_post/2, allowed_methods/2,
-         content_types_accepted/2,
+-export([allow_missing_post/2, allowed_methods/2, content_types_accepted/2,
          content_types_provided/2, create_path/2,
          delete_resource/2, delete_completed/2,
-         forbidden/2, is_conflict/2,
-         malformed_request/2, moved_permanently/2,
-         moved_temporarily/2, options/2,
-         post_is_create/2, previously_existed/2,
-         resource_exists/2, service_available/2]).
+         forbidden/2, is_conflict/2, malformed_request/2,
+         options/2, post_is_create/2, post_is_create/3,
+         previously_existed/2, resource_exists/2, service_available/2]).
 
 -include_lib("webmachine/include/webmachine.hrl").
 
 -include_lib("platformer.hrl").
-
-%% @doc The <code>context</code> record for a memo_resource is used to hold on to
-%%  information about the resource as requests about it are processed along the
-%%  HTTP pipeline.  It contains the following:
-%%
-%% <dl>
-%%   <dt>config</dt>    <dd>The configuration passed from webmachine</dd>
-%%   <dt>type</dt>      <dd>The type of the memo (user, position, etc.)</dd>
-%%   <dt>module</dt>    <dd>The module that contains specific handling for the memo type</dd>
-%%   <dt>id</dt>        <dd>The id for the memo as generated (in a POST) or specified by a HEAD, GET, DELETE or PUT
-%%   <dt>status</dt>    <dd>An atom describing the disposition of the memo (active, deleted, ...)</dd>
-%%   <dt>body</dt>      <dd>The request body sent, if any</dd>
-%%   <dt>record</dt>    <dd>The record retrieved or created that pertains to the resource</dd>
-%%   <dt>envelope</dt>  <dd>The message token, priority and status carried along by the memo as it propagates</dd>
-%% </dl>
--record(context, {config, type, module, id, path, status, body, record, envelope}).
 
 %% @doc See {@wmdocs}
 init(Config) ->
     {{trace, "/tmp/platformer/" ++ atom_to_list(node())}, #context{config=Config}}.  %% debugging code
     %%{ok, #context{config=Config}}.                                                 %% regular code
 
-%% @doc See {@wmdocs}
+%% @doc A memo can be created with POST. See {@wmdocs}
 allow_missing_post(ReqData, Context) ->
     {true, ReqData, Context}.
 
 %% @doc See {@wmdocs}
 allowed_methods(ReqData, Context) ->
     {case Context#context.id of
-         undefined -> ['OPTIONS', 'POST'];
+         undefined -> ['OPTIONS'];
          _ -> ['DELETE', 'HEAD', 'OPTIONS', 'PUT']
      end,
      ReqData, Context}.
@@ -66,7 +47,6 @@ content_types_accepted(ReqData, Context) ->
 content_types_provided(ReqData, Context) ->
     {[{"text/javascript", to_json}], ReqData, Context}.
 
-%% @doc See {@wmdocs}
 create_path(ReqData, Context) ->
     {Id, Path} = apply(Context#context.module, create, [Context#context.envelope]),
     {Path, wrq:set_resp_header("Location", Path, ReqData), Context#context{id=Id, path=Path}}.
@@ -193,14 +173,6 @@ malformed_request(ReqData, Context) ->
             end
     end.
 
-%% @doc See {@wmdocs}
-moved_permanently(ReqData, Context) ->
-    {false, ReqData, Context}.
-
-%% @doc See {@wmdocs}
-moved_temporarily(ReqData, Context) ->
-    {false, ReqData, Context}.
-
 %% @doc In addition to just supplying allowed methods and headers, we
 %%  also check the headers that are being sent, since browsers doing a
 %%  "pre-flight" for some methods will first send along an OPTIONS
@@ -212,8 +184,8 @@ moved_temporarily(ReqData, Context) ->
 options(ReqData, Context) ->
     AllowedHeaders = 
         case Context#context.id of
-            undefined -> ["X-Platformer-Memo-Token", "X-Platformer-Memo-Priority"];
-            _ -> ["X-Platformer-Memo-Token", "X-Platformer-Memo-Priority", "X-Platformer-Memo-Source"]
+            undefined -> [?TOKEN_HEADER, ?PRIORITY_HEADER];
+            _ -> [?TOKEN_HEADER, ?PRIORITY_HEADER, ?SOURCE_HEADER]
         end,
     {AllowedMethods, _, _} = allowed_methods(ReqData, Context),
     {[{"Access-Control-Allow-Origin", "*"},
@@ -224,28 +196,32 @@ options(ReqData, Context) ->
 
 %% @doc See {@wmdocs}
 post_is_create(ReqData, Context) ->
-    {case Context#context.id of
-         undefined -> true;
-         Id ->
-             case apply(Context#context.module, exists, [{Id, false}]) of
-                 {false, unknown} ->
-                     log4erl:debug("Received POST with new ~s: ~s", [Context#context.type, Id]),
-                     true;
-                 {true, active} ->
-                     log4erl:debug("Received POST with previously known ~s: ~s", [Context#context.type, Id]),
-                     false;
-                 {false, deleted} ->
-                     log4erl:debug("Received POST with deleted ~s: ~s", [Context#context.type, Id]),
-                     false
-             end
-     end,
-     ReqData, Context}.
+    Id = Context#context.id,
+    post_is_create(Id =/= undefined orelse Id, ReqData, Context).
+
+%% @doc Helper function used by {@link post_is_create/2} in this
+%% module and children.
+post_is_create(Bool, ReqData, Context) when is_boolean(Bool) ->
+    {Bool, ReqData, Context};
+post_is_create(Id, ReqData, Context) ->
+    post_is_create(
+      case apply(Context#context.module, exists, [{Id, false}]) of
+          {false, unknown} ->
+              log4erl:debug("Received POST with new ~s: ~s", [Context#context.type, Id]),
+              true;
+          {true, active} ->
+              log4erl:debug("Received POST with previously known ~s: ~s", [Context#context.type, Id]),
+              false;
+          {false, deleted} ->
+              log4erl:debug("Received POST with deleted ~s: ~s", [Context#context.type, Id]),
+              false
+      end,
+      ReqData, Context).
+
 
 %% @doc See {@wmdocs}
 previously_existed(ReqData, Context) ->
-    {case Context#context.status of deleted -> true; _ -> false end,
-     ReqData,
-     Context}.
+    {Context#context.status =:= deleted, ReqData, Context}.
 
 %% @doc Here is where we look for a propagation envelope, and if it
 %% exists, capture it in the Context.  If it does not exist, we create
@@ -254,7 +230,7 @@ previously_existed(ReqData, Context) ->
 %% See {@wmdocs}
 resource_exists(ReqData, Context) ->
     case wrq:method(ReqData) of
-        'HEAD' ->
+        M when M =:= 'HEAD' orelse M =:= 'GET' ->
             {Found, Status} = apply(Context#context.module, exists,
                                     [list_to_binary(Context#context.id), Context#context.envelope]),
             {Found, ReqData, Context#context{status=Status}};
@@ -290,7 +266,7 @@ service_available(ReqData, Context) ->
 %% @spec to_json(wm_reqdata(), term()) -> {string(), rd(), term()}
 to_json(ReqData, Context) ->
     case wrq:method(ReqData) of
-        'POST' ->
+        M when M =:= 'POST' orelse M =:= 'GET' ->
             {true,
              wrq:set_resp_body(apply(Context#context.module, to_json, [Context#context.id]), ReqData),
              Context};

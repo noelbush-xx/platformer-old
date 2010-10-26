@@ -1,17 +1,23 @@
 #!/usr/bin/env python
-import unittest
+from unittest import *
 import httplib, re, time
 
 SERVER_TIMEOUT = 10
 
-class NodeCommunicator(unittest.TestCase):
-    """This provides a testing framework and utilities for communicating
-    with nodes.  It does not implement all necessary functionality;
-    subclasses should implement choose_client()."""
+class NodeCommunicator(TestCase):
+    """This provides a testing framework and utilities for
+    communicating with nodes.  It does not implement all necessary
+    functionality; subclasses should implement choose_node().  It
+    extends TestCase because it uses some assertion and fail
+    methods of that class."""
 
-    def prep_client(self):
-        """Close any existing client, choose another (implemented by
-        subclasses), and wait for it to become available."""
+    def prep_client(self, retry=False, host=None, port=None):
+        """Close the client if open, then if a host and port are
+        specified, set up a new client to connect with the indicated
+        node; if no host and port are specified, then choose them
+        (using a subclass's implementation of choose_node()), and wait
+        for the corresponding node to become available.  If retry is
+        set to True, will try different nodes if one is not available."""
 
         try:
             self.client.close()
@@ -26,16 +32,34 @@ class NodeCommunicator(unittest.TestCase):
             # Wasn't defined; no problem.
             pass
 
-        self.choose_client()
-        self.wait_for_client_ready()
+        connected = False
+        
+        if host is not None and port is not None:
+            self.host = host
+            self.port = port
+            specific_node = True
+        else:
+            specific_node = False
 
-    def wait_for_client_ready(self):
-        """Try to connect to the client, repeating until successful or SERVER_TIMEOUT has expired."""
+        # We will store all request info for backtracing errors.
+        if not hasattr(self, 'requests'):
+            self.requests = []
 
-        self.client = httplib.HTTPConnection(self.host, self.port, timeout=SERVER_TIMEOUT)
+        while not connected:
+            if not specific_node:
+                self.choose_node()
+            self.client = httplib.HTTPConnection(self.host, self.port, timeout=SERVER_TIMEOUT)
+            connected = self.wait_for_client_ready(not retry)
+            if not connected and specific_node:
+                break
 
-        # Keep trying to connect until the server responds or the
-        # timeout is exceeded.
+    def wait_for_client_ready(self, fail=True):
+        """Try to connect to the client, repeating until successful or
+        SERVER_TIMEOUT has expired.  Unless fail is set to False, a
+        failure to connect will cause a test failure.  If fail is
+        True, the function will return a boolean indicating whether
+        the connection was successful."""
+
         timeout = time.time() + SERVER_TIMEOUT
         connected = False
         while time.time() < timeout:
@@ -45,17 +69,20 @@ class NodeCommunicator(unittest.TestCase):
                 break
             except:
                 time.sleep(1)
-        if not connected:
+
+        if not connected and fail:
             self.fail('Unable to connect to node at ' + self.host + ':' + str(self.port) + '.')
+
+        return connected
 
     def request(self, method, uri, body=None, headers={}):
         """Just a simple wrapper for sending a request and capturing the
         response, so individual methods don't have to worry about when
         this gets done."""
 
-        # Keep the method and uri so we can examine them later if needed.
-        self.method = method
-        self.uri = uri
+        # Store request data for backtrace.
+        self.requests.append([self.host, self.port, method, uri, body, headers])
+
         self.client.request(method, uri, body, headers)
         try:
             self.response = self.client.getresponse()
@@ -72,8 +99,8 @@ class NodeCommunicator(unittest.TestCase):
 
         self.assertEqual(self.response.status, code,
                          'Response status was ' + str(self.response.status) + ' instead of ' + str(code) + '\n' +
-                         '(' + self.method + ' request to ' + self.host + ':' + str(self.port) + self.uri + ')\n' +
-                         'Response body: \n' + self.response_body)
+                         self.request_backtrace() +
+                         'Final response body: \n' + self.response_body)
         
     def match_response_body(self, regexp):
         """Assume request().  Match response body against given regexp, and
@@ -94,4 +121,9 @@ class NodeCommunicator(unittest.TestCase):
         self.assertTrue(re.match(regexp, header_value),
                         'Expected pattern not matched by ' + headername + ' value: ' + header_value)
         return header_value
-                           
+
+    def request_backtrace(self):
+        result = 'Backtrace:\n'
+        for request in self.requests:
+            result += ' - %s to %s:%s%s\n' % (request[2], request[0], request[1], request[3])
+        return result

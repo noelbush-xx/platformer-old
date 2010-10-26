@@ -1,9 +1,12 @@
 ERL ?= erl
 APP := platformer
 DOC_INCLUDES := "deps"
-WM_DOCS := "<a href=\"http://bitbucket.org/justin/webmachine/wiki/WebmachineResources\" target=\"_top\">Webmachine Resources</a>"
+WM_DOCS := "<a href=\"http://webmachine.basho.com/resources.html\" target=\"_top\">Webmachine Resources</a>"
 
 .PHONY: deps traceclean
+
+test: all
+	@(./rebar skip_deps=true eunit)
 
 all: deps
 	@./rebar compile

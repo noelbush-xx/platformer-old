@@ -16,7 +16,7 @@ class SingleKnownStableNode(NodeCommunicator):
         subprocess.call(['../platformer', '--reset-db', '--background', '--quiet', 'start'])
         self.prep_client()
 
-    def choose_client(self):
+    def choose_node(self):
         """Since these tests are for only one node, this method sets the default host and port."""
 
         self.host = '0.0.0.0'
@@ -27,3 +27,4 @@ class SingleKnownStableNode(NodeCommunicator):
 
         subprocess.call(['../platformer', '--quiet', 'stop'])
         self.client.close()
+

@@ -4,27 +4,28 @@
 %% @doc Communication among nodes in Platformer is carried out by
 %% propagating <em>memos</em>.  There are specialized memos
 %% corresponding to each of the different sorts of entities that
-%% Platformer is concerned with: users, positions, other nodes, etc.
-%% This module provides some generic services common to all memo
-%% types, and specifies (using Erlang's behaviour mechanism) the
-%% methods that any "concrete subtype" of memo must implement.
+%% Platformer is concerned with: users, elements, claims,
+%% interpretations, other nodes, etc.  This module provides some
+%% generic services common to all memo types, and specifies (using
+%% Erlang's behaviour mechanism) the methods that any "concrete
+%% subtype" of memo must implement.
 
 -module(platformer_memo).
 
 -include_lib("stdlib/include/qlc.hrl").
 -include_lib("platformer.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 -compile({parse_transform, exprecs}).
 -export_records([platformer_user, platformer_node]).
 
 -export([create/2, create/4, delete/3, exists/2, exists/3, get/2]).
--export([check_token/1, is_valid_token/2, is_valid_priority/2, propagate/4, propagate/5, propagate/6, propagate/7]).
+-export([check_token/1, is_valid_id/2, is_valid_token/2, is_valid_priority/2, propagate/4, propagate/5, propagate/6, propagate/7]).
 
 -export([behaviour_info/1]).
 
 behaviour_info(callbacks) ->
-    [{create, 1},        % Create a brand new memo item, using a given envelope.
-     {create, 2},        % Create a record for an existing memo item, given a specification and an envelope.
+    [{create, 2},        % Create a record for an existing memo item, given a specification and an envelope.
      {delete, 2},        % Mark a record for a memo item as deleted.
      {exists, 1},        % Check whether a record for a memo item exists.
      {exists, 2},        % As above, but including an envelope.
@@ -34,9 +35,8 @@ behaviour_info(callbacks) ->
     ];
 behaviour_info(_Other) -> undefined.
 
-
-%% @doc Create a brand new memo of a given type.  Return an id and a
-%% path for the new memo.
+%% @doc Create a brand new memo of a given type, given no additional
+%% information.  Return an id and a path for the new memo.
 %%
 %% @spec create(atom(), string(), envelope()) -> {Id::string(), Path::string()}
 create(Type, #envelope{} = Envelope) ->
@@ -53,8 +53,13 @@ create(Type, Id, Record, #envelope{priority=Priority} = Envelope) when is_binary
     case platformer_db:write(Record) of
         {atomic, ok} ->
             log4erl:debug("Created new ~s ~p with priority ~B.", [Type, Id, Priority]),
-            Json = apply(memo_module(Type), to_json, [Id]),
-            spawn_link(platformer_memo, propagate, [put, Type, binary_to_list(Id), Json, Envelope]),
+            if
+                Priority > 0 ->
+                    Json = apply(memo_module(Type), to_json, [Id]),
+                    spawn_link(?MODULE, propagate, [put, Type, binary_to_list(Id), Json, Envelope]);
+                Priority == 0 ->
+                    noop
+            end,
             {Id, lists:concat(["/", Type, "/", binary_to_list(Id)])};
         {aborted, Error} ->
             log4erl:debug("Error in creating ~s ~p: ~p", [Type, Id, Error]),
@@ -123,7 +128,7 @@ get(Type, Id) when is_binary(Id) ->
     end.
 
 %% @doc Check whether there is a local record for a memo with the given id.
-%%  No attempt is made to check remove servers (For that, use {@link exists/2}.)
+%%  No attempt is made to check remove servers (For that, use {@link exists/3}.)
 %%
 %% @spec exists(string(), binary() | string()) -> {bool(), active | deleted}
 exists(Type, Id) when is_list(Id) ->
@@ -189,9 +194,9 @@ exists_remote(Type, Id, [#platformer_node{} = Node|Nodes], #envelope{token=Token
             Address = platformer_node:get_address(Node),
             log4erl:debug("Checking node at ~s for ~s ~p.", [Address, Type, Id]),
             case httpc:request(head, {lists:flatten(io_lib:format("~s/~s/~s", [Address, Type, Id])),
-                                      [{"X-Platformer-Memo-Token", Token},
-                                       {"X-Platformer-Memo-Priority", integer_to_list(Priority)},
-                                       {"X-Platformer-Memo-Source", platformer_node:my_address()}]},
+                                      [{?TOKEN_HEADER, Token},
+                                       {?PRIORITY_HEADER, integer_to_list(Priority)},
+                                       {?SOURCE_HEADER, platformer_node:my_address()}]},
                                platformer_util:httpc_standard_http_options(), platformer_util:httpc_standard_options()) of
                 {ok, {{_, Status, _}, _, _}} ->
                     case Status of
@@ -226,7 +231,6 @@ exists_remote(_Type, _Id, [], _Envelope) ->
     log4erl:debug("No more nodes to check."),
     {false, unknown}.
 
-
 %% @doc For internal use: return an atom naming the module that should
 %% handle the given type (named as a string).  The same atom should
 %% correspond to the record type used to store the type.
@@ -234,6 +238,19 @@ exists_remote(_Type, _Id, [], _Envelope) ->
 %% @spec memo_module(string()) -> atom()
 memo_module(Type) ->
     list_to_atom(string:concat("platformer_", Type)).
+
+%% @doc Is the given id valid for a user?
+%%
+%% @spec is_valid_id(binary()) -> bool()
+is_valid_id(Type, Id) when is_binary(Id) ->
+    is_valid_id(Type, binary_to_list(Id));
+is_valid_id(Type, Id) when is_list(Id) ->
+    TypeLen = string:len(Type),
+    string:left(Id, 11) =:= "platformer_"
+        andalso
+        string:substr(Id, 12, TypeLen) =:= Type
+        andalso
+        platformer_util:is_valid_uuid(string:substr(Id, 11 + TypeLen)).
 
 is_valid_token(S, Description) ->
     case platformer_util:is_valid_uuid(S) of
@@ -297,8 +314,10 @@ propagate(Action, Type, Id, #envelope{} = Envelope) ->
 propagate(Action, Type, Id, _, #envelope{priority=0}, _, _) ->
     log4erl:debug("Not propagating priority 0 ~p of ~s ~s.", [Action, Type, Id]),
     ok;
-propagate(Action, Type, Id, Body, #envelope{priority=Priority} = Envelope, MandatoryTargets, Omit) when Action =:= put orelse Action =:= delete ->
-    Nodes = lists:append(MandatoryTargets, platformer_node:get_random_list({count, Priority}, [], lists:append(Omit, [(platformer_node:me())#platformer_node.id]))),
+propagate(Action, Type, Id, Body, #envelope{priority=Priority} = Envelope, MandatoryTargets, Omit) when Action =:= put; Action =:= delete ->
+    Nodes = lists:append(MandatoryTargets,
+                         platformer_node:get_random_list({count, Priority},
+                                                         [], lists:append(Omit, [(platformer_node:me())#platformer_node.id]))),
     NodeCount = length(Nodes),
     if
         NodeCount > 0 ->
@@ -321,9 +340,9 @@ propagate_to_nodes([Node|Rest], Action, Type, Id, Body, #envelope{token=Token, p
             Address = platformer_node:get_address(Node),
             log4erl:debug("Propagating ~p of ~s to node ~s.", [Action, Type, Address]),
             Uri = lists:concat([Address, "/", Type, "/", Id]),
-            Headers = [{"X-Platformer-Memo-Token", Token},
-                       {"X-Platformer-Memo-Priority", Priority},
-                       {"X-Platformer-Memo-Source", platformer_node:my_address()}],
+            Headers = [{?TOKEN_HEADER, Token},
+                       {?PRIORITY_HEADER, Priority},
+                       {?SOURCE_HEADER, platformer_node:my_address()}],
             if Body =:= undefined ->
                     if Action =:= put ->
                             throw({error, "httpc requires that a PUT have a body."});
@@ -338,3 +357,24 @@ propagate_to_nodes([Node|Rest], Action, Type, Id, Body, #envelope{token=Token, p
 propagate_to_nodes([], _Action, _Type, _Id, _, _) ->
     %%log4erl:debug("No more nodes to which to propagate ~p of ~s ~s.", [Action, Type, Id]),
     ok.
+
+%%
+%% TESTS
+%%
+
+% a valid id (of a bogus type)
+valid_id_00_test() ->
+    ?assert(is_valid_id("chicken", "platformer_chicken_06000740-0d04-4f44-bfb4-bcf406b3ddd6")).
+
+% invalid id (uuid part isn't correct v4 format)
+invalid_id_01_test() ->
+    ?assertNot(is_valid_id("chicken", "platformer_chicken_06000740-0d04-5f44-bfb4-bcf406b3ddd6")).
+    
+% invalid id (uuid part isn't correct v4 format)
+invalid_id_02_test() ->
+    ?assertNot(is_valid_id("chicken", "platformer_chicken_06000740-0d04-4f44-bfb4-bcf40")).
+
+% invalid id (type doesn't match id)
+invalid_id_03_test() ->
+    ?assertNot(is_valid_id("kitchen", "platformer_chicken_06000740-0d04-4f44-bfb4-bcf406b3ddd6")).
+        
