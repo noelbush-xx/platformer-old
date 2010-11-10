@@ -24,10 +24,8 @@ class UserTests(TestCase):
     def test_00_create_user_with_headers(self):
         """Create user via POST, *with* propagation headers.  Receive 201, valid JSON for user, and correct Location header."""
 
-        self.request('POST', '/user', headers = {'X-Platformer-Memo-Token': uuid.uuid4(), 'X-Platformer-Memo-Priority': '3'})
-
-        # Check status code.
-        self.verify_status_code(httplib.CREATED)
+        self.request('POST', '/user', headers = {'X-Platformer-Memo-Token': uuid.uuid4(), 'X-Platformer-Memo-Priority': '3'},
+                     response_code = httplib.CREATED)
 
         # Check JSON response body.
         self.match_response_body(USER_JSON_REGEXP)
@@ -39,59 +37,47 @@ class UserTests(TestCase):
         """Omit memo token header when creating user via POST.  Receive 400."""
         #TODO: Match response text too (?)
 
-        self.request('POST', '/user', headers = {'X-Platformer-Memo-Priority': '3'})
-
-        # Check that status code is 400 BAD REQUEST.
-        self.verify_status_code(httplib.BAD_REQUEST)
+        self.request('POST', '/user', headers = {'X-Platformer-Memo-Priority': '3'},
+                     response_code = httplib.BAD_REQUEST)
 
     def test_00b_create_user_bad_missing_priority_header(self):
         """Omit memo priority header when creating user via POST.  Receive 400."""
         #TODO: Match response text too (?)
 
-        self.request('POST', '/user', headers = {'X-Platformer-Memo-Token': uuid.uuid4()})
-
-        # Check that status code is 400 BAD REQUEST.
-        self.verify_status_code(httplib.BAD_REQUEST)
+        self.request('POST', '/user', headers = {'X-Platformer-Memo-Token': uuid.uuid4()},
+                     response_code = httplib.BAD_REQUEST)
 
     def test_00c_create_user_bad_noninteger_priority_header(self):
         """Pass non-integer memo priority header when creating user via POST.  Receive 400."""
         #TODO: Match response text too (?)
 
         self.request('POST', '/user', headers = {'X-Platformer-Memo-Token': uuid.uuid4(),
-                                                 'X-Platformer-Memo-Priority': 'three'})
-
-        # Check that status code is 400 BAD REQUEST.
-        self.verify_status_code(httplib.BAD_REQUEST)
+                                                 'X-Platformer-Memo-Priority': 'three'},
+                     response_code = httplib.BAD_REQUEST)
 
     def test_00d_create_user_bad_negative_priority_header(self):
         """Pass negative memo priority header when creating user via POST.  Receive 400."""
         #TODO: Match response text too (?)
 
         self.request('POST', '/user', headers = {'X-Platformer-Memo-Token': uuid.uuid4(),
-                                                 'X-Platformer-Memo-Priority': '-2'})
-
-        # Check that status code is 400 BAD REQUEST.
-        self.verify_status_code(httplib.BAD_REQUEST)
+                                                 'X-Platformer-Memo-Priority': '-2'},
+                     response_code = httplib.BAD_REQUEST)
 
     def test_00e_create_user_bad_toolarge_priority_header(self):
         """Pass too-large memo priority header when creating user via POST.  Receive 400."""
         #TODO: Match response text too (?)
 
         self.request('POST', '/user', headers = {'X-Platformer-Memo-Token': uuid.uuid4(),
-                                                 'X-Platformer-Memo-Priority': '5'})
-
-        # Check that status code is 400 BAD REQUEST.
-        self.verify_status_code(httplib.BAD_REQUEST)
+                                                 'X-Platformer-Memo-Priority': '5'},
+                     response_code = httplib.BAD_REQUEST)
 
     def test_00f_create_user_bad_invalid_token_header(self):
         """Pass invalid memo token when creating user via POST. Receive 400."""
         #TODO: Match response text too (?)
 
         self.request('POST', '/user', headers = {'X-Platformer-Memo-Token': uuid.uuid1(),
-                                                 'X-Platformer-Memo-Priority': 'three'})
-
-        # Check that status code is 400 BAD REQUEST.
-        self.verify_status_code(httplib.BAD_REQUEST)
+                                                 'X-Platformer-Memo-Priority': 'three'},
+                     response_code = httplib.BAD_REQUEST)
 
     #
     # All the following tests omit propagation headers (the normal case).
@@ -99,10 +85,7 @@ class UserTests(TestCase):
     def test_01_create_user(self):
         """Create user via POST (no propagation headers).  Receive 201, valid JSON for user, and correct Location header."""
 
-        self.request('POST', '/user')
-
-        # Check status code.
-        self.verify_status_code(httplib.CREATED)
+        self.request('POST', '/user', response_code = httplib.CREATED)
 
         # Check JSON response body.
         self.match_response_body(USER_JSON_REGEXP)
@@ -114,30 +97,19 @@ class UserTests(TestCase):
         """Create user via POST, verify with HEAD.  Receive 200."""
 
         self.test_01_create_user()
-        self.prep_client()
-        self.request('HEAD', self.user_path)
-
-        # Check status code.
-        self.verify_status_code(httplib.OK)
+        self.request('HEAD', self.user_path, response_code = httplib.OK, new_prep = True)
 
     def test_03_delete_user(self):
         """Create user via POST, then DELETE.  Receive 204."""
 
         self.test_01_create_user()
-        self.prep_client()
-        self.request('DELETE', self.user_path)
-
-        # Check status code.
-        self.verify_status_code(httplib.NO_CONTENT)
+        self.request('DELETE', self.user_path, response_code = httplib.NO_CONTENT, new_prep = True)
 
     def test_04_verify_deleted_user(self):
         """Create and delete user, then verify deleted with HEAD.  Receive 410."""
         self.test_03_delete_user()
-        self.prep_client()
-        self.request('HEAD', self.user_path)
 
-        # Check status code.
-        self.verify_status_code(httplib.GONE)
+        self.request('HEAD', self.user_path, response_code = httplib.GONE, new_prep = True)
 
     def test_05_invalid_userid(self):
         """Request a userid with invalid syntax.  Receive 400."""

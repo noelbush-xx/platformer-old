@@ -6,6 +6,9 @@ from user_tests import *
 class TestUserChaoticNodes(ChaoticNodes, UserTests):
     """This runs user tests on simulated environments of "chaotic"
     node availability."""
+
+def setUp(self):
+    self.prep_client()
    
 if __name__ == '__main__':
     suite = TestLoader().loadTestsFromTestCase(TestUserChaoticNodes)

@@ -8,6 +8,7 @@ class TestUserMultipleKnownStableNode(MultipleKnownStableNodes, UserTests):
     test, the full set of nodes is reset and newly started."""
     
     def setUp(self):
+        self.retry = True
         self.start_nodes(10)
 
     def tearDown(self):

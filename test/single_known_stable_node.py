@@ -14,6 +14,9 @@ class SingleKnownStableNode(NodeCommunicator):
 
         # Now start the node we want.
         subprocess.call(['../platformer', '--reset-db', '--background', '--quiet', 'start'])
+
+        # Indicate to test methods that we don't retry (since there's only one node).
+        self.retry = False
         self.prep_client()
 
     def choose_node(self):
@@ -21,6 +24,7 @@ class SingleKnownStableNode(NodeCommunicator):
 
         self.host = '0.0.0.0'
         self.port = 8000
+        return True
 
     def tearDown(self):
         """Teardown stops the Platformer node."""

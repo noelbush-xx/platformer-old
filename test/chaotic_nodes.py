@@ -2,11 +2,11 @@
 from unittest import *
 import random
 import subprocess
-from node_comm import *
+from multiple_nodes import *
 from user_tests import *
 from shared_fixture import *
 
-class ChaoticNodes(NodeCommunicator, SharedFixture):
+class ChaoticNodes(MultipleNodes, SharedFixture):
     """This provides connectivity with a "space" of chaotically
     available nodes.  It does not include test methods."""
 
@@ -52,6 +52,7 @@ class ChaoticNodes(NodeCommunicator, SharedFixture):
         ChaoticNodes.simulator_started = False
 
     def setUp(self):
+        self.retry = True
         if ChaoticNodes.simulator_started:
             try:
                 self.prep_client(True)
@@ -70,13 +71,14 @@ class ChaoticNodes(NodeCommunicator, SharedFixture):
     def choose_node(self):
         """This chooses the next node from a randomly shuffled list, repopulating the list first if necessary."""
 
-        if len(self.unused_nodes) == 0:
-            self.unused_nodes = list(self.nodes)
-            random.shuffle(self.unused_nodes)
+        self.fill_unused_nodes()
 
         # Choose (and remove) a node from the shuffled list.
         choice = self.unused_nodes.pop(0)
 
+        if choice is None:
+            return False
+
         self.host = choice[0]
         self.port = choice[1]
-
+        return True

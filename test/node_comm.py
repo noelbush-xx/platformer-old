@@ -11,13 +11,15 @@ class NodeCommunicator(TestCase):
     extends TestCase because it uses some assertion and fail
     methods of that class."""
 
-    def prep_client(self, retry=False, host=None, port=None):
+    def prep_client(self, host=None, port=None):
         """Close the client if open, then if a host and port are
         specified, set up a new client to connect with the indicated
         node; if no host and port are specified, then choose them
         (using a subclass's implementation of choose_node()), and wait
         for the corresponding node to become available.  If retry is
-        set to True, will try different nodes if one is not available."""
+        set to True, will try different nodes if one is not available.
+        Returns a bool indicating whether the client prep was
+        successful."""
 
         try:
             self.client.close()
@@ -32,32 +34,44 @@ class NodeCommunicator(TestCase):
             # Wasn't defined; no problem.
             pass
 
-        connected = False
-        
-        if host is not None and port is not None:
-            self.host = host
-            self.port = port
-            specific_node = True
-        else:
-            specific_node = False
-
         # We will store all request info for backtracing errors.
         if not hasattr(self, 'requests'):
             self.requests = []
 
-        while not connected:
-            if not specific_node:
-                self.choose_node()
-            self.client = httplib.HTTPConnection(self.host, self.port, timeout=SERVER_TIMEOUT)
-            connected = self.wait_for_client_ready(not retry)
-            if not connected and specific_node:
-                break
+        connected = False
+        
+        # We may have been passed a (first) node to try.
+        if host is not None and port is not None:
+            self.host = host
+            self.port = port
+            node_chosen = True
+        else:
+            node_chosen = False
 
-    def wait_for_client_ready(self, fail=True):
+        # This loop will be exited by one of the return statements
+        # (as long as choose_node() works correctly).
+        while True:
+            # Try getting a node if one has not been chosen.
+            if not node_chosen:
+                node_chosen = self.choose_node()
+            # Still no node chosen means there are no more available to choose.
+            if not node_chosen:
+                return False
+            # Otherwise, try to connect; return True if successful.
+            self.client = httplib.HTTPConnection(self.host, self.port, timeout=SERVER_TIMEOUT)
+            if self.wait_for_client_ready():
+                return True
+            # Otherwise unset node_chosen and let the loop go again.
+            node_chosen = False
+
+        # This is here in case we mess up the logic of the above while loop.
+        self.fail('Logic broken in NodeCommunicator.prep_client().')
+
+    def wait_for_client_ready(self):
         """Try to connect to the client, repeating until successful or
-        SERVER_TIMEOUT has expired.  Unless fail is set to False, a
-        failure to connect will cause a test failure.  If fail is
-        True, the function will return a boolean indicating whether
+        SERVER_TIMEOUT has expired.  Unless self.retry is set to True, a
+        failure to connect will cause a test failure.  If self.retry is
+        False, the function will return a boolean indicating whether
         the connection was successful."""
 
         timeout = time.time() + SERVER_TIMEOUT
@@ -70,37 +84,52 @@ class NodeCommunicator(TestCase):
             except:
                 time.sleep(1)
 
-        if not connected and fail:
+        if not connected and not self.retry:
             self.fail('Unable to connect to node at ' + self.host + ':' + str(self.port) + '.')
 
         return connected
 
-    def request(self, method, uri, body=None, headers={}):
-        """Just a simple wrapper for sending a request and capturing the
-        response, so individual methods don't have to worry about when
-        this gets done."""
+    def request(self, method, uri, body=None, headers={}, response_code=None, new_prep=False):
+        """Performs a specified request, captures the response, and
+        (optionally) verifies that the response code matches an
+        expectation.  The bool new_prep says whether to prepare the
+        client anew before sending the request."""
 
-        # Store request data for backtrace.
-        self.requests.append([self.host, self.port, method, uri, body, headers])
-
-        self.client.request(method, uri, body, headers)
-        try:
-            self.response = self.client.getresponse()
-        except httplib.BadStatusLine:
-            self.fail('Error reading response from request to ' + self.host + ':' + str(self.port) + '.')
+        # Prepare the client (if directed).
+        if new_prep:
+            proceed = self.prep_client()
         else:
-            self.response_body = self.response.read()
-           
-    def verify_status_code(self, code):
-        """Assume that a request has already been sent to the client and
-        the response has been read by request().  Check that the
-        response code matches the given value; if it does not, print a
-        message explaining the error."""
+            proceed = True
 
-        self.assertEqual(self.response.status, code,
-                         'Response status was ' + str(self.response.status) + ' instead of ' + str(code) + '\n' +
-                         self.request_backtrace() +
-                         'Final response body: \n' + self.response_body)
+        while proceed:
+            # We will decide below whether to propagate test failures.
+            try:
+                # Store request data for backtrace.
+                self.requests.append([self.host, self.port, method, uri, body, headers])
+
+                self.client.request(method, uri, body, headers)
+                try:
+                    self.response = self.client.getresponse()
+                except httplib.BadStatusLine:
+                    self.fail('Error reading response from request to ' + self.host + ':' + str(self.port) + '.')
+                else:
+                    self.response_body = self.response.read()
+                    
+                    if response_code is not None:
+                        self.assertEqual(self.response.status, response_code,
+                                         'Response status was ' + str(self.response.status) +
+                                         ' instead of ' + str(response_code) + '\n' +
+                                         self.request_backtrace() +
+                                         'Final response body: \n' + self.response_body)
+            except AssertionError as e:
+                if self.retry:
+                    proceed = self.prep_client()
+                else:
+                    proceed = False
+                if not proceed:
+                    raise e
+            # If we got here, the request was successful.
+            proceed = False
         
     def match_response_body(self, regexp):
         """Assume request().  Match response body against given regexp, and
