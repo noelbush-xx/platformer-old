@@ -48,7 +48,7 @@ content_types_provided(ReqData, Context) ->
     {[{"text/javascript", to_json}], ReqData, Context}.
 
 create_path(ReqData, Context) ->
-    {Id, Path} = apply(Context#context.module, create, [Context#context.envelope]),
+    {Id, Path} = apply(Context#context.memo_module, create, [Context#context.envelope]),
     {Path, wrq:set_resp_header("Location", Path, ReqData), Context#context{id=Id, path=Path}}.
 
 %% @doc See {@wmdocs}
@@ -60,7 +60,7 @@ delete_completed(ReqData, Context) ->
 delete_resource(ReqData, #context{envelope=Envelope} = Context) ->
     log4erl:debug("Deleting ~s ~s, as per propagation request with priority ~B.",
                   [Context#context.type, Context#context.id, Envelope#envelope.priority]),
-    {apply(Context#context.module, delete, [list_to_binary(Context#context.id), Envelope]) =:= ok,
+    {apply(Context#context.memo_module, delete, [list_to_binary(Context#context.id), Envelope]) =:= ok,
      ReqData,
      Context}.
 
@@ -88,7 +88,7 @@ is_conflict(ReqData, Context) ->
                                 log4erl:debug("PUT of ~s has priority ~B; will be propagated.", [Context#context.type, Priority]),
                                 [Context#context.id, Context#context.envelope]
                         end,
-                    {_, Path} = apply(Context#context.module, create, CreateArgs),
+                    {_, Path} = apply(Context#context.memo_module, create, CreateArgs),
                     {false, wrq:set_resp_header("Location", Path, ReqData), Context}
             end;
         _ -> {false, ReqData, Context}
@@ -110,7 +110,7 @@ forbidden(ReqData, Context) ->
                     case NC1#context.id of
                         undefined -> {false, ReqData, Context};
                         Id ->
-                            case apply(NC1#context.module, is_valid_id, [Id]) of
+                            case apply(NC1#context.memo_module, is_valid_id, [Id]) of
                                 true ->
                                     {false, ReqData, NC1};
                                 false ->
@@ -205,7 +205,7 @@ post_is_create(Bool, ReqData, Context) when is_boolean(Bool) ->
     {Bool, ReqData, Context};
 post_is_create(Id, ReqData, Context) ->
     post_is_create(
-      case apply(Context#context.module, exists, [{Id, false}]) of
+      case apply(Context#context.memo_module, exists, [{Id, false}]) of
           {false, unknown} ->
               log4erl:debug("Received POST with new ~s: ~s", [Context#context.type, Id]),
               true;
@@ -231,15 +231,15 @@ previously_existed(ReqData, Context) ->
 resource_exists(ReqData, Context) ->
     case wrq:method(ReqData) of
         M when M =:= 'HEAD' orelse M =:= 'GET' ->
-            {Found, Status} = apply(Context#context.module, exists,
+            {Found, Status} = apply(Context#context.memo_module, exists,
                                     [list_to_binary(Context#context.id), Context#context.envelope]),
             {Found, ReqData, Context#context{status=Status}};
         'DELETE' ->
-            {Found, Status} = apply(Context#context.module, exists,
+            {Found, Status} = apply(Context#context.memo_module, exists,
                                     [list_to_binary(Context#context.id), platformer_resource_common:new_propagation_envelope()]),
             {Found, ReqData, Context#context{status=Status}};
         'PUT' ->
-            {Found, Status} = apply(Context#context.module, exists,
+            {Found, Status} = apply(Context#context.memo_module, exists,
                                     [list_to_binary(Context#context.id)]),
             {Found, ReqData, Context#context{status=Status}};
         _ ->
@@ -256,8 +256,8 @@ resource_exists(ReqData, Context) ->
 service_available(ReqData, Context) ->
     log4erl:debug("~p request to ~s.", [wrq:method(ReqData), wrq:raw_path(ReqData)]),
     Type = hd(string:tokens(wrq:path(ReqData), "/")),
-    Module = list_to_atom(string:concat("platformer_", Type)),
-    NC1 = Context#context{type=Type, module=Module},
+    Memo_module = list_to_atom(lists:concat(["platformer_", Type, "_memo"])),
+    NC1 = Context#context{type=Type, memo_module=Memo_module},
     {true, ReqData, case wrq:path_info('id', ReqData) of
                         undefined -> NC1;
                         Id -> NC1#context{id=Id}
@@ -268,7 +268,7 @@ to_json(ReqData, Context) ->
     case wrq:method(ReqData) of
         M when M =:= 'POST' orelse M =:= 'GET' ->
             {true,
-             wrq:set_resp_body(apply(Context#context.module, to_json, [Context#context.id]), ReqData),
+             wrq:set_resp_body(apply(Context#context.memo_module, to_json, [Context#context.id]), ReqData),
              Context};
         _ ->
             {<<>>, ReqData, Context}

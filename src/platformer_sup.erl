@@ -118,11 +118,11 @@ init([]) ->
     %% Reset the db if instructed to; in any case, check that pre-supplied servers are in db
     case lists:member("reset-db", init:get_plain_arguments()) of
         true -> platformer_db:reset();
-        false -> platformer_node:load_preconfigured()
+        false -> platformer_node_memo:load_preconfigured()
     end,
 
     %% Create/verify record for own node in db.
-    platformer_node:create(platformer_node:my_address()),
+    platformer_node_memo:create(platformer_node:my_address()),
 
     %% Announce self to other servers, seek peers, and set up timed announcements and peer searches.
     platformer_node:announce_self(),

@@ -25,48 +25,48 @@ class ChaoticNodes(MultipleNodes, SharedFixture):
         """Stop the simulator."""
         self.stop_simulator()
 
-    def start_simulator(self, node_range = (1, 100), port_range = (8000, 8150),
-                        stable_seeds = [8000], wait_range = (1, 60), chaos = 50):
+    def start_simulator(self, node_range = (1, 10), port_range = (8000, 8150),
+                        stable_seeds = [8000], wait_range = (1, 10), chaos = 50):
         
         # First be sure there aren't already any nodes running.
         subprocess.call(['../platformer', '--quiet', 'killall'])
 
         # Start the simulator with given parameters.
-        ChaoticNodes.process = subprocess.Popen(['./simulator',
-                                                 '--min=' + str(node_range[0]), '--max=' + str(node_range[1]),
-                                                 '--low-port=' + str(port_range[0]), '--high-port=' + str(port_range[1]),
-                                                 '--stable=' ','.join(map(lambda(i): str(i), stable_seeds)),
-                                                 '--min-wait=' + str(wait_range[0]), '--max-wait=' + str(wait_range[1]),
-                                                 '--chaos=' + str(chaos),
-                                                 '--quiet'],
+        self.process = subprocess.Popen(['./simulator',
+                                         '--min=' + str(node_range[0]), '--max=' + str(node_range[1]),
+                                         '--low-port=' + str(port_range[0]), '--high-port=' + str(port_range[1]),
+                                         '--stable=' ','.join(map(lambda(i): str(i), stable_seeds)),
+                                         '--min-wait=' + str(wait_range[0]), '--max-wait=' + str(wait_range[1]),
+                                         '--chaos=' + str(chaos)],
+                                         #'--quiet'],
                                        cwd = '..')
 
         node_count = port_range[1] - port_range[0]
-        ChaoticNodes.unused_nodes = []
-        ChaoticNodes.nodes = zip(['0.0.0.0'] * node_count, range(8000, 8000 + node_count))
+        self.unused_nodes = []
+        self.nodes = zip(['0.0.0.0'] * node_count, range(8000, 8000 + node_count))
 
-        ChaoticNodes.simulator_started = True
+        self.simulator_started = True
 
     def stop_simulator(self):
-        ChaoticNodes.process.terminate()
-        ChaoticNodes.simulator_started = False
+        self.process.terminate()
+        self.simulator_started = False
 
     def setUp(self):
         self.retry = True
-        if ChaoticNodes.simulator_started:
+        if self.simulator_started:
             try:
                 self.prep_client(True)
             except AttributeError:
                 pass
-            self.unused_nodes = ChaoticNodes.unused_nodes
+#            self.unused_nodes = ChaoticNodes.unused_nodes
 
     def tearDown(self):
-        if ChaoticNodes.simulator_started:
+        if self.simulator_started:
             try:
                 self.client.close()
             except AttributeError:
                 pass
-            ChaoticNodes.unused_nodes = self.unused_nodes
+#            self.unused_nodes = self.unused_nodes
 
     def choose_node(self):
         """This chooses the next node from a randomly shuffled list, repopulating the list first if necessary."""

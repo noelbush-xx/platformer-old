@@ -2,13 +2,13 @@
 %% @copyright 2010 Noel Bush.
 %%
 %% @doc Communication among nodes in Platformer is carried out by
-%% propagating <em>memos</em>.  There are specialized memos
-%% corresponding to each of the different sorts of entities that
-%% Platformer is concerned with: users, elements, claims,
-%% interpretations, other nodes, etc.  This module provides some
-%% generic services common to all memo types, and specifies (using
-%% Erlang's behaviour mechanism) the methods that any "concrete
-%% subtype" of memo must implement.
+%% propagating <em>memos</em> about <em>elements</em>.  There are
+%% specialized memos corresponding to each of the different element
+%% types that Platformer is concerned with: users, nodes, tags,
+%% predicates, claims, etc. This module provides some generic services
+%% common to all memos, and specifies (using Erlang's behaviour
+%% mechanism) the methods that any "concrete subtype" of element_memo
+%% must implement.
 
 -module(platformer_memo).
 
@@ -19,7 +19,7 @@
 -compile({parse_transform, exprecs}).
 -export_records([platformer_user, platformer_node]).
 
--export([create/2, create/4, delete/3, exists/2, exists/3, get/2]).
+-export([create/2, create/4, delete/3, exists/2, exists/3, get/2, update/1]).
 -export([check_token/1, is_valid_id/2, is_valid_token/2, is_valid_priority/2, propagate/4, propagate/5, propagate/6, propagate/7]).
 
 -export([behaviour_info/1]).
@@ -31,7 +31,8 @@ behaviour_info(callbacks) ->
      {exists, 2},        % As above, but including an envelope.
      {get, 1},           % Retrieve a memo by id.
      {is_valid_id, 1},   % Check whether a given string is a valid id for the memo type.
-     {to_json, 1}        % Return a JSON representation of a memo.
+     {to_json, 1},       % Return a JSON representation of a memo.
+     {from_json, 1}      % Produce a valid record for a memo from a JSON representation.
     ];
 behaviour_info(_Other) -> undefined.
 
@@ -40,7 +41,7 @@ behaviour_info(_Other) -> undefined.
 %%
 %% @spec create(atom(), string(), envelope()) -> {Id::string(), Path::string()}
 create(Type, #envelope{} = Envelope) ->
-    log4erl:debug("Creating new ~s.", [Type]),
+    log4erl:debug("Creating new ~s memo.", [Type]),
     Id = lists:concat(["platformer_", Type, "_", platformer_util:uuid()]),
     apply(memo_module(Type), create, [list_to_binary(Id), Envelope]).
 
@@ -52,7 +53,7 @@ create(Type, Id, Record, #envelope{} = Envelope) when is_list(Id) ->
 create(Type, Id, Record, #envelope{priority=Priority} = Envelope) when is_binary(Id) ->
     case platformer_db:write(Record) of
         {atomic, ok} ->
-            log4erl:debug("Created new ~s ~p with priority ~B.", [Type, Id, Priority]),
+            log4erl:debug("Created new ~s memo ~p with priority ~B.", [Type, Id, Priority]),
             if
                 Priority > 0 ->
                     Json = apply(memo_module(Type), to_json, [Id]),
@@ -75,10 +76,10 @@ create(Type, Id, Record, #envelope{priority=Priority} = Envelope) when is_binary
 delete(Type, Id, #envelope{} = Envelope) when is_list(Id) ->
     delete(Type, list_to_binary(Id), Envelope);
 delete(Type, Id, #envelope{} = Envelope) when is_binary(Id) ->
-    log4erl:debug("Delete ~s ~p.", [Type, Id]),
+    log4erl:debug("Delete ~s memo ~p.", [Type, Id]),
     case apply(memo_module(Type), get, [Id]) of
         not_found ->
-            log4erl:debug("~s ~p not found locally; could not delete.", [Type, Id]),
+            log4erl:debug("~s memo ~p not found locally; could not delete.", [Type, Id]),
             {error, not_found};
         Record ->
             RecordSource = platformer_memo:'#get-'(source, Record),
@@ -89,15 +90,15 @@ delete(Type, Id, #envelope{} = Envelope) when is_binary(Id) ->
             LocalResult = 
                 case mnesia:transaction(F) of
                     {atomic, ok} ->
-                        log4erl:debug("Deleted ~s ~p locally.", [Type, Id]),
+                        log4erl:debug("Deleted ~s memo ~p locally.", [Type, Id]),
                         ok;
                     {aborted, Error} ->
-                        log4erl:debug("Could not delete ~s ~p locally. Error: ~p", [Type, Id, Error]),
+                        log4erl:debug("Could not delete ~s memo ~p locally. Error: ~p", [Type, Id, Error]),
                         {error, Error}
                 end,
             log4erl:debug("Propagating deletion memo."),
             
-            SourceNode = platformer_node:get(platformer_node:get_id((RecordSource))),
+            SourceNode = platformer_node_memo:get(platformer_node:get_id((RecordSource))),
             spawn(platformer_memo, propagate, [delete, Type, binary_to_list(Id), Envelope,
                                                     case platformer_node:is_me(SourceNode) of
                                                         true -> [];
@@ -113,7 +114,7 @@ delete(Type, Id, #envelope{} = Envelope) when is_binary(Id) ->
 get(Type, Id) when is_list(Id) ->
     get(Type, list_to_binary(Id));
 get(Type, Id) when is_binary(Id) ->
-    RecordType = memo_module(Type),
+    RecordType = record_type(Type),
     Result = platformer_db:find(qlc:q([X || X <- mnesia:table(RecordType),
                                             platformer_memo:'#get-'(id, X) == Id])),
     case length(Result) of
@@ -140,10 +141,10 @@ exists(Type, Id) when is_binary(Id) ->
         Record ->
             case platformer_memo:'#get-'(status, Record) of
                 active ->
-                    log4erl:debug("~s ~p is active.", [Type, Id]),
+                    log4erl:debug("~s memo ~p is active.", [Type, Id]),
                     {true, active};
                 deleted ->
-                    log4erl:debug("~s ~p was previously deleted.", [Type, Id]),
+                    log4erl:debug("~s memo ~p was previously deleted.", [Type, Id]),
                     {false, deleted}
             end
     end.
@@ -162,7 +163,7 @@ exists(Type, Id, #envelope{} = Envelope) when is_binary(Id) ->
         {false, deleted} -> {false, deleted};
         {false, unknown} ->
             %% Now check other known nodes.
-            KnownNodes = platformer_node:get_list(),
+            KnownNodes = platformer_node_memo:get_my_list(),
             log4erl:debug("Checking other known nodes for ~s ~p.", [Type, Id]),
             case exists(Type, Id, KnownNodes, Envelope) of
                 {true, Status} -> {true, Status};
@@ -232,12 +233,18 @@ exists_remote(_Type, _Id, [], _Envelope) ->
     {false, unknown}.
 
 %% @doc For internal use: return an atom naming the module that should
-%% handle the given type (named as a string).  The same atom should
-%% correspond to the record type used to store the type.
+%% handle the given type (named as a string).
 %%
 %% @spec memo_module(string()) -> atom()
 memo_module(Type) ->
-    list_to_atom(string:concat("platformer_", Type)).
+    list_to_atom(lists:concat(["platformer_", Type, "_memo"])).
+
+%% @doc For internal use: return an atom naming the record type that
+%% stores the given type (named as a string).
+%%
+%% @spec memo_module(string()) -> atom()
+record_type(Type) ->
+    list_to_atom(lists:concat(["platformer_", Type])).
 
 %% @doc Is the given id valid for a user?
 %%
@@ -316,7 +323,7 @@ propagate(Action, Type, Id, _, #envelope{priority=0}, _, _) ->
     ok;
 propagate(Action, Type, Id, Body, #envelope{priority=Priority} = Envelope, MandatoryTargets, Omit) when Action =:= put; Action =:= delete ->
     Nodes = lists:append(MandatoryTargets,
-                         platformer_node:get_random_list({count, Priority},
+                         platformer_node_memo:get_random_list({count, Priority},
                                                          [], lists:append(Omit, [(platformer_node:me())#platformer_node.id]))),
     NodeCount = length(Nodes),
     if
@@ -357,6 +364,12 @@ propagate_to_nodes([Node|Rest], Action, Type, Id, Body, #envelope{token=Token, p
 propagate_to_nodes([], _Action, _Type, _Id, _, _) ->
     %%log4erl:debug("No more nodes to which to propagate ~p of ~s ~s.", [Action, Type, Id]),
     ok.
+
+%% @doc Update the given record by writing it to the database.
+%%
+%% @spec update(Record) -> none()
+update(Record) ->
+    platformer_db:write(Record).
 
 %%
 %% TESTS

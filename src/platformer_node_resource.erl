@@ -39,9 +39,9 @@ allowed_methods(ReqData, Context) ->
     end.
 
 %% create_path(ReqData, Context) ->
-%%     case platformer_node:create(Context#context.record) of
+%%     case platformer_node_memo:create(Context#context.record) of
 %%         {Ok, Node} when Ok =:= ok orelse Ok =:= already_exists ->
-%%             Path = platformer_node:get_path(Node),
+%%             Path = platformer_node_memo:get_path(Node),
 %%             {Path, wrq:set_resp_header("Location", Path, ReqData), Context#context{record=Node}};
 %%         {error, Error} ->
 %%             {"", wrq:append_to_response_body("Could not create new node.\n" ++ Error, ReqData), Context}
@@ -67,7 +67,7 @@ malformed_request(ReqData, Context) ->
                 %% Check that the body contains a json object with the node spec
                 Body = wrq:req_body(ReqData),
                 {MF1, NRD1, NC1} =
-                    case platformer_node:from_json(Body) of
+                    case platformer_node_memo:from_json(Body) of
                         #platformer_node{} = Record ->
                             {false, ReqData, Context#context{record=Record}};
                         error ->
@@ -88,16 +88,16 @@ options(ReqData, Context) ->
 
 %% @doc POST is only create if the request body describes a node we don't yet know.
 post_is_create(ReqData, Context) ->
-    {platformer_node:get(Context#context.record#platformer_node.id) =:= not_found, ReqData, Context}.
+    {platformer_node_memo:get(Context#context.record#platformer_node.id) =:= not_found, ReqData, Context}.
 
 previously_existed(ReqData, Context) ->
-    {platformer_node:get(Context#context.record#platformer_node.id) /= not_found, ReqData, Context}.
+    {platformer_node_memo:get(Context#context.record#platformer_node.id) /= not_found, ReqData, Context}.
 
 %% This will be called only if the node record has already been
 %% found, in which case we just want to send a 303 "See Other"
 %% response.
 process_post(ReqData, Context) ->
-    {true, wrq:do_redirect(true, wrq:set_resp_header("Location", platformer_node:get_path(Context#context.record), ReqData)), Context}.
+    {true, wrq:do_redirect(true, wrq:set_resp_header("Location", platformer_node_memo:get_path(Context#context.record), ReqData)), Context}.
 
 resource_exists(ReqData, Context) ->
     case wrq:raw_path(ReqData) of
@@ -117,7 +117,7 @@ to_json(ReqData, Context) ->
         true ->
             %% Of the known nodes with rating 75 or greater,
             %% share a random sample of 25%.
-            NodeRecords = platformer_node:get_random_list({percentage, 25}, [{min_rating, 75}]),
+            NodeRecords = platformer_node_memo:get_random_list({percentage, 25}, [{min_rating, 75}]),
             Nodes = [?record_to_struct(platformer_node, Node) || Node <- NodeRecords],
             {jsonerl:encode(?record_to_struct(nodes, #nodes{nodes=Nodes})), ReqData, Context};
         false ->

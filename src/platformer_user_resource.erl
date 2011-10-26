@@ -27,7 +27,7 @@ allowed_methods(ReqData, Context) ->
 %% arguments other than the envelope.  This is different from most
 %% memo types, so this function is overridden. See {@wmdocs}
 create_path(ReqData, Context) ->
-    {Id, Path} = apply(Context#context.module, create, [Context#context.envelope]),
+    {Id, Path} = apply(Context#context.memo_module, create, [Context#context.envelope]),
     {Path, wrq:set_resp_header("Location", Path, ReqData), Context#context{id=Id, path=Path}}.
 
 %% @doc See {@wmdocs}

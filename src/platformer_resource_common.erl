@@ -124,8 +124,8 @@ postprocess_rd(ReqData) ->
     case wrq:get_req_header(?SOURCE_HEADER, ReqData) of
         undefined -> true;
         Address ->
-            case platformer_node:get(platformer_util:md5(Address)) of
-                not_found -> platformer_node:create(Address);
+            case platformer_node_memo:get(platformer_util:md5(Address)) of
+                not_found -> platformer_node_memo:create(Address);
                 _Server -> true
             end
     end,
