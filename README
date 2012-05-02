@@ -1,6 +1,9 @@
 Welcome to Platformer.
 
-What is here at this moment is still in formation.  I'm building up an example implementation of a Platformer node using webmachine (http://bitbucket.org/basho/webmachine), and a basic web client for testing it.  Once this is more fleshed out I'll document what's going on here.
+What is here at this moment is still in formation.  I'm building up an example
+implementation of a Platformer node using webmachine
+(http://bitbucket.org/basho/webmachine), and a basic web client for testing it.
+Once this is more fleshed out I'll document what's going on here.
 
 Custom Headers
 --------------

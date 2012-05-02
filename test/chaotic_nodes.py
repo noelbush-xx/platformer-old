@@ -13,6 +13,7 @@ class ChaoticNodes(MultipleNodes, SharedFixture):
     simulator_started = False
     process = None
 
+
     def sharedSetUp(self):
         """Start up the simulator."""
         self.start_simulator()
@@ -21,13 +22,15 @@ class ChaoticNodes(MultipleNodes, SharedFixture):
         self.prep_client('0.0.0.0', 8000)
         self.wait_for_client_ready()
 
+
     def sharedTearDown(self):
         """Stop the simulator."""
         self.stop_simulator()
 
+
     def start_simulator(self, node_range = (1, 10), port_range = (8000, 8150),
                         stable_seeds = [8000], wait_range = (1, 10), chaos = 50):
-        
+
         # First be sure there aren't already any nodes running.
         subprocess.call(['../platformer', '--quiet', 'killall'])
 
@@ -47,9 +50,11 @@ class ChaoticNodes(MultipleNodes, SharedFixture):
 
         self.simulator_started = True
 
+
     def stop_simulator(self):
         self.process.terminate()
         self.simulator_started = False
+
 
     def setUp(self):
         self.retry = True
@@ -60,6 +65,7 @@ class ChaoticNodes(MultipleNodes, SharedFixture):
                 pass
 #            self.unused_nodes = ChaoticNodes.unused_nodes
 
+
     def tearDown(self):
         if self.simulator_started:
             try:
@@ -67,6 +73,7 @@ class ChaoticNodes(MultipleNodes, SharedFixture):
             except AttributeError:
                 pass
 #            self.unused_nodes = self.unused_nodes
+
 
     def choose_node(self):
         """This chooses the next node from a randomly shuffled list, repopulating the list first if necessary."""

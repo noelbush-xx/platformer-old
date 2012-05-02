@@ -10,6 +10,7 @@ class MultipleKnownStableNodes(MultipleNodes):
 
     node_count = NODE_COUNT
 
+
     def start_nodes(self, count):
         """Starts a specified number of Platformer nodes and verifies
         connectivity with all of them."""
@@ -17,7 +18,7 @@ class MultipleKnownStableNodes(MultipleNodes):
         MultipleKnownStableNodes.node_count = count
 
         # First be sure there aren't already any nodes running.
-        subprocess.call(['../platformer', '--quiet', 'killall'])        
+        subprocess.call(['../platformer', '--quiet', 'killall'])
 
         # Now start the nodes we want and set up the node-tracking variables.
         subprocess.call(['../multiple-nodes', '--count=' + str(count), '--reset-db', '--quiet', 'start'])
@@ -36,6 +37,7 @@ class MultipleKnownStableNodes(MultipleNodes):
         # requires us to implement choose_node().
         self.prep_client()
 
+
     def choose_node(self, repopulate = False):
         """This chooses the next node from a randomly shuffled list, repopulating the list first if necessary
         (if repopulate is True).  Returns True if a node is available, and False if not."""
@@ -52,6 +54,7 @@ class MultipleKnownStableNodes(MultipleNodes):
             return True
         else:
             return False
+
 
     def stop_nodes(self):
         """Stops all of the Platformer nodes we started."""

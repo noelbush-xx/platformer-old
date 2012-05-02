@@ -169,7 +169,7 @@
                           // Now show the status of known nodes.
                           $('#known-nodes').html('<ul></ul>');
                           $.each(pf.nodes, function (index, node) {
-                                   status = pf._pingNode(node);
+                                   var status = pf._pingNode(node);
                                    $('#known-nodes ul').append('<li class="' + status + '">' + node.address + '</li>');
                                  });
                         }
@@ -244,7 +244,7 @@
 
        // Choose a node randomly and remove it from the unused array.
        var choice = Math.floor(Math.random() * unused_count);
-       node = this.unused_nodes[choice];
+       var node = this.unused_nodes[choice];
        this.unused_nodes.splice(choice, 1);
 
        // Return the url for the chosen node (avoiding the given one if necessary).

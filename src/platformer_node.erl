@@ -17,6 +17,7 @@
 -include_lib("jsonerl.hrl").
 -include_lib("platformer.hrl").
 
+
 %% @doc Constructs the id representing the given node.  A string
 %% will be interpreted as an address, a record as a platformer_node record.
 %%
@@ -25,6 +26,7 @@ get_id(#platformer_node{} = Record) ->
     get_id(get_address(Record));
 get_id(Address) ->
     list_to_binary(string:concat("platformer_node_", platformer_util:md5(Address))).
+
 
 %% @doc Returns the path that should be used (appended to hostname for URI)
 %% for referring to this node.
@@ -35,11 +37,13 @@ get_path(#platformer_node{id=Id}) when Id =/= undefined ->
 get_path(#platformer_node{} = Record) ->
     "/node/" ++ get_id(Record).
 
+
 %% @doc Constructs the address of the given node record.
 %%
 %% @spec get_address(platformer_node{}) -> string()
 get_address(#platformer_node{scheme=Scheme, host=Host, port=Port}) ->
     lists:concat([Scheme, "://", binary_to_list(Host), ":", Port]).
+
 
 %% @doc Indicates whether the given node record refers to the current node.
 %%
@@ -56,13 +60,14 @@ is_me(Host, Port) ->
     case Host =:= platformer_util:get_param(ip) of
         true -> Port =:= platformer_util:get_param(port);
         false -> false
-    end.    
+    end.
 
 me() ->
     platformer_node_memo:get(my_id()).
 
 my_id() ->
     get_id(my_address()).
+
 
 %% @doc Queries other known nodes for their node lists, and adds any
 %% new ones found to ours.  Returns the list of newly discovered
@@ -97,6 +102,7 @@ get_other_list([Node|Rest], Acc) ->
     get_other_list(Rest, [Others|Acc]);
 get_other_list([], Acc) -> lists:flatten(Acc).
 
+
 %% @doc Returns the address of this node -- i.e., a string consisting
 %% of "http" or "https" followed by "://", then the hostname, then ":"
 %% and the port number.
@@ -116,6 +122,7 @@ adjust_rating(Node, Adjustment) ->
             ok
     end.
 
+
 %% @doc Announce this node to other known nodes.
 announce_self() ->
     Json = list_to_binary(?record_to_json(platformer_node, me())),
@@ -133,6 +140,7 @@ announce_self(_Json, [])->
     log4erl:debug("No more nodes to whom to announce myself."),
     ok.
 
+
 %% @doc Ask other nodes for their node lists.  We check with
 %% the 25% least recently contacted nodes.
 seek_peers() ->
@@ -141,6 +149,7 @@ seek_peers() ->
                        platformer_node_memo:get_my_list()),
     Sublist = lists:sublist(Nodes, trunc(length(Nodes) * 0.25 + 1)),
     seek_peers(Sublist).
+
 
 seek_peers([Node|Rest]) ->
     Address = get_address(Node),

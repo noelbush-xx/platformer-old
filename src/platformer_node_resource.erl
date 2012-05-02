@@ -27,9 +27,11 @@
 %% This is used locally for ease in constructing a list of nodes for a "/nodes/list" query.
 -record(nodes, {nodes}).
 
+
 init(Config) ->
     {{trace, "/tmp/platformer/" ++ atom_to_list(node())}, #context{config=Config}}.  %% debugging code
     %%{ok, #context{config=Config}}.             %% regular code
+
 
 allowed_methods(ReqData, Context) ->
     case wrq:raw_path(ReqData) of
@@ -37,6 +39,7 @@ allowed_methods(ReqData, Context) ->
         "/node" -> {['OPTIONS', 'POST'], ReqData, Context};
         _ -> platformer_memo_resource:allowed_methods(ReqData, Context)
     end.
+
 
 %% create_path(ReqData, Context) ->
 %%     case platformer_node_memo:create(Context#context.record) of
@@ -52,7 +55,7 @@ malformed_request(ReqData, Context) ->
         case wrq:method(ReqData) of
             'DELETE' ->
                 case wrq:path_info(id, ReqData) of
-                    undefined -> 
+                    undefined ->
                         {true, wrq:append_to_response_body("No node id specified.", ReqData), Context};
                     _ ->
                         {false, ReqData, Context}

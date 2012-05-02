@@ -52,16 +52,16 @@
 %%  HTTP pipeline.  It contains the following:
 %%
 %% <dl>
-%%   <dt>config</dt>    <dd>The configuration passed from webmachine</dd>
-%%   <dt>type</dt>      <dd>The type of the memo (user, position, etc.)</dd>
-%%   <dt>module</dt>    <dd>The module that contains specific handling for the memo type</dd>
-%%   <dt>id</dt>        <dd>The id for the memo as generated (in a POST) or specified by a HEAD, GET, DELETE or PUT
-%%   <dt>status</dt>    <dd>An atom describing the disposition of the memo (active, deleted, ...)</dd>
-%%   <dt>body</dt>      <dd>The request body sent, if any</dd>
-%%   <dt>record</dt>    <dd>The record retrieved or created that pertains to the resource</dd>
-%%   <dt>envelope</dt>  <dd>The message token, priority and status carried along by the memo as it propagates</dd>
+%%   <dt>config</dt>         <dd>The configuration passed from webmachine</dd>
+%%   <dt>type</dt>           <dd>The type of the memo (user, position, etc.)</dd>
+%%   <dt>memo_module</dt>    <dd>The module that contains specific handling for the memo type</dd>
+%%   <dt>id</dt>             <dd>The id for the memo as generated (in a POST) or specified by a HEAD, GET, DELETE or PUT
+%%   <dt>status</dt>         <dd>An atom describing the disposition of the memo (active, deleted, ...)</dd>
+%%   <dt>body</dt>           <dd>The request body sent, if any</dd>
+%%   <dt>record</dt>         <dd>The record retrieved or created that pertains to the resource</dd>
+%%   <dt>envelope</dt>       <dd>The message token, priority and status carried along by the memo as it propagates</dd>
 %% </dl>
--record(context, {config, type, module, id, path, status, body, record, envelope}).
+-record(context, {config, type, memo_module, id, path, status, body, record, envelope}).
 
 %% @doc A set of information that follows around a memo item when it is propagated.
 -record(envelope, {token :: string(),         % a (reasonably) unique string to identify a message

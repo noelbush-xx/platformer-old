@@ -11,6 +11,7 @@ class NodeCommunicator(TestCase):
     extends TestCase because it uses some assertion and fail
     methods of that class."""
 
+
     def prep_client(self, host=None, port=None):
         """Close the client if open, then if a host and port are
         specified, set up a new client to connect with the indicated
@@ -39,7 +40,7 @@ class NodeCommunicator(TestCase):
             self.requests = []
 
         connected = False
-        
+
         # We may have been passed a (first) node to try.
         if host is not None and port is not None:
             self.host = host
@@ -67,6 +68,7 @@ class NodeCommunicator(TestCase):
         # This is here in case we mess up the logic of the above while loop.
         self.fail('Logic broken in NodeCommunicator.prep_client().')
 
+
     def wait_for_client_ready(self):
         """Try to connect to the client, repeating until successful or
         SERVER_TIMEOUT has expired.  Unless self.retry is set to True, a
@@ -88,6 +90,7 @@ class NodeCommunicator(TestCase):
             self.fail('Unable to connect to node at ' + self.host + ':' + str(self.port) + '.')
 
         return connected
+
 
     def request(self, method, uri, body=None, headers={}, response_code=None, new_prep=False):
         """Performs a specified request, captures the response, and
@@ -114,7 +117,7 @@ class NodeCommunicator(TestCase):
                     self.fail('Error reading response from request to ' + self.host + ':' + str(self.port) + '.')
                 else:
                     self.response_body = self.response.read()
-                    
+
                     if response_code is not None:
                         self.assertEqual(self.response.status, response_code,
                                          'Response status was ' + str(self.response.status) +
@@ -130,13 +133,15 @@ class NodeCommunicator(TestCase):
                     raise e
             # If we got here, the request was successful.
             proceed = False
-        
+
+
     def match_response_body(self, regexp):
         """Assume request().  Match response body against given regexp, and
         provide explanatory message if not."""
 
         self.assertTrue(re.match(regexp, self.response_body),
                         'Expected pattern not matched by response body: ' + self.response_body)
+
 
     def match_header(self, headername, regexp):
         """Assume request().  Test existence of given headername, then test
@@ -150,6 +155,7 @@ class NodeCommunicator(TestCase):
         self.assertTrue(re.match(regexp, header_value),
                         'Expected pattern not matched by ' + headername + ' value: ' + header_value)
         return header_value
+
 
     def request_backtrace(self):
         result = 'Backtrace:\n'
